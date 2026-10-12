@@ -12,7 +12,10 @@ tmp/
 .env.*
 *.db
 *.db-*
-*.sqlite*
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.sqlite3-*
 *.log
 settings.json
 /data/

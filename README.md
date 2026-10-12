@@ -4,6 +4,12 @@ Windows 桌面工具，管理机械项目代号、模块和零件编号，支持
 
 2026-10-12：从 1.6.1 源码整理首个开源版本，改用 Qt 标准图标，使用虚构测试数据，以 GPL-3.0-only 发布。
 
+2026-10-12：新增 Windows x64 MSI 预发布构建、离线程序自检和后续修改同步流程。
+
+## Windows 安装包
+
+在 [Releases](https://github.com/zhang18166/mechanical-project-namer/releases) 下载标记为预发布的 MSI，先核对随附 SHA256。包未签名，Windows 可能提示未知发布者；不要绕过系统安全策略。安装/卸载方式、数据位置和未测范围见 [安装说明](packaging/INSTALL.md)。交互 GUI、真实 AI/SOLIDWORKS 和系统安装/卸载尚未验收。
+
 ## 安装与运行
 
 需要 Windows 和 Python 3.12。SOLIDWORKS 联动需要本机安装对应软件；基础命名功能不需要 AI 密钥。
@@ -14,7 +20,7 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m mechanical_project_namer
 ```
 
-也可运行 `launcher.py`。本候选仅提供源码，不包含 EXE 与原内部发布脚本。
+也可运行 `launcher.py`。仓库仅保存源码，安装包在 Releases；构建方法见 [packaging/README.md](packaging/README.md)。
 
 ## 使用
 
@@ -30,7 +36,7 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pytest tests -q
 ```
 
-候选测试覆盖项目编号独立性、保存事务、重复编号、作废编号、项目代号修改确认和中文搜索。GUI、真实 AI 服务和真实 SOLIDWORKS 联动需要另行验收。
+核心测试覆盖项目编号独立性、保存事务、重复编号、作废编号、项目代号修改确认和中文搜索。GUI、真实 AI 服务和真实 SOLIDWORKS 联动需要另行验收。后续修复与改进经审查测试后同步本仓库，流程见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## 许可证
 

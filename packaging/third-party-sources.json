@@ -1,0 +1,182 @@
+[
+  {
+    "file": "Python-3.12.14.tar.xz",
+    "url": "https://www.python.org/ftp/python/3.12.14/Python-3.12.14.tar.xz",
+    "sha256": "5c8462af5790baf43a321a1559dbe0db06d1be4300fb85fb53c40060668e548a"
+  },
+  {
+    "file": "altgraph-0.17.5.tar.gz",
+    "url": "https://files.pythonhosted.org/packages/7e/f8/97fdf103f38fed6792a1601dbc16cc8aac56e7459a9fff08c812d8ae177a/altgraph-0.17.5.tar.gz",
+    "sha256": "c87b395dd12fabde9c99573a9749d67da8d29ef9de0125c7f536699b4a9bc9e7"
+  },
+  {
+    "file": "anyio-4.14.2.tar.gz",
+    "url": "https://files.pythonhosted.org/packages/61/cc/a381afa6efea9f496eff839d4a6a1aed3bfafc7b3ab4b0d1b243a12573dd/anyio-4.14.2.tar.gz",
+    "sha256": "cfa139f3ed1a23ee8f88a145ddb5ac7605b8bbfd8592baacd7ce3d8bb4313c7f"
+  },
+  {
+    "file": "bzip2-1.0.8.tar.gz",
+    "url": "https://astral-sh.github.io/mirror/files/bzip2-1.0.8.tar.gz",
+    "sha256": "ab5a03176ee106d3f0fa90e381da478ddae405918153cca248e682cd0c4a2269"
+  },
+  {
+    "file": "certifi-2026.7.22.tar.gz",
+    "url": "https://files.pythonhosted.org/packages/a3/c2/24167ea9858356b47a87a50d39908bfdb72ceeefe0041586e704e5376b3a/certifi-2026.7.22.tar.gz",
+    "sha256": "741e2c3b351ddf169a738da9f2c048608ff7f2c5cc02f1ebc6b118bb090d5d55"
+  },
+  {
+    "file": "et_xmlfile-2.0.0.tar.gz",
+    "url": "https://files.pythonhosted.org/packages/d3/38/af70d7ab1ae9d4da450eeec1fa3918940a5fafb9055e934af8d6eb0c2313/et_xmlfile-2.0.0.tar.gz",
+    "sha256": "dab3f4764309081ce75662649be815c4c9081e88f0837825f90fd28317d4da54"
+  },
+  {
+    "file": "expat-2.8.3.tar.xz",
+    "url": "https://github.com/libexpat/libexpat/releases/download/R_2_8_3/expat-2.8.3.tar.xz",
+    "sha256": "f6256df90c906773d344da084402b7d3e4f22ed41b1a59c989098a83d3ea0c85"
+  },
+  {
+    "file": "h11-0.16.0.tar.gz",
+    "url": "https://files.pythonhosted.org/packages/01/ee/02a2c011bdab74c6fb3c75474d40b3052059d95df7e73351460c8588d963/h11-0.16.0.tar.gz",
+    "sha256": "4e35b956cf45792e4caa5885e69fba00bdbc6ffafbfa020300e549b208ee5ff1"
+  },
+  {
+    "file": "httpcore-1.0.9.tar.gz",
+    "url": "https://files.pythonhosted.org/packages/06/94/82699a10bca87a5556c9c59b5963f2d039dbd239f25bc2a63907a05a14cb/httpcore-1.0.9.tar.gz",
+    "sha256": "6e34463af53fd2ab5d807f399a9b45ea31c3dfa2276f15a2c3f00afff6e176e8"
+  },
+  {
+    "file": "httpx-0.28.1.tar.gz",
+    "url": "https://files.pythonhosted.org/packages/b1/df/48c586a5fe32a0f01324ee087459e112ebb7224f646c0b5023f5e79e9956/httpx-0.28.1.tar.gz",
+    "sha256": "75e98c5f16b0f35b567856f597f06ff2270a374470a5c2392242528e3e3e42fc"
+  },
+  {
+    "file": "idna-3.19.tar.gz",
+    "url": "https://files.pythonhosted.org/packages/5f/f7/abb373e5757eaec4b922b92f97ec8d6d7e057cf06778247604fbc4e7c3f3/idna-3.19.tar.gz",
+    "sha256": "5e0811a4383b21dc5838069f801c4fb62113b7447663d2530d2bd6e77b49bf15"
+  },
+  {
+    "file": "jaraco.classes-3.4.0.tar.gz",
+    "url": "https://files.pythonhosted.org/packages/06/c0/ed4a27bc5571b99e3cff68f8a9fa5b56ff7df1c2251cc715a652ddd26402/jaraco.classes-3.4.0.tar.gz",
+    "sha256": "47a024b51d0239c0dd8c8540c6c7f484be3b8fcf0b2d85c13825780d3b3f3acd"
+  },
+  {
+    "file": "jaraco_context-6.1.2.tar.gz",
+    "url": "https://files.pythonhosted.org/packages/af/50/4763cd07e722bb6285316d390a164bc7e479db9d90daa769f22578f698b4/jaraco_context-6.1.2.tar.gz",
+    "sha256": "f1a6c9d391e661cc5b8d39861ff077a7dc24dc23833ccee564b234b81c82dfe3"
+  },
+  {
+    "file": "jaraco_functools-4.6.0.tar.gz",
+    "url": "https://files.pythonhosted.org/packages/6c/1f/c23395957d41ccf27c4e535c3d334c4051e5395b3752057ba4cbaec35c56/jaraco_functools-4.6.0.tar.gz",
+    "sha256": "880c577ec9720b3a052d5bc611fb9f2269b3d87902ef42440df443b88e443280"
+  },
+  {
+    "file": "keyring-25.6.0.tar.gz",
+    "url": "https://files.pythonhosted.org/packages/70/09/d904a6e96f76ff214be59e7aa6ef7190008f52a0ab6689760a98de0bf37d/keyring-25.6.0.tar.gz",
+    "sha256": "0b39998aa941431eb3d9b0d4b2460bc773b9df6fed7621c2dfb291a7e0187a66"
+  },
+  {
+    "file": "libffi-3.4.6.tar.gz",
+    "url": "https://github.com/libffi/libffi/releases/download/v3.4.6/libffi-3.4.6.tar.gz",
+    "sha256": "b0dea9df23c863a7a50e825440f3ebffabd65df1497108e5d437747843895a4e"
+  },
+  {
+    "file": "more_itertools-11.1.0.tar.gz",
+    "url": "https://files.pythonhosted.org/packages/de/1d/f4da6f02cdffe04d6362210b807146a26044c88d839208aec273bb0d9184/more_itertools-11.1.0.tar.gz",
+    "sha256": "48e8f4d9e7e5878571ecf6f2b4e57634f93cd474cc8cfbd2376f2d11b396e30d"
+  },
+  {
+    "file": "mpdecimal-4.0.0.tar.gz",
+    "url": "https://astral-sh.github.io/mirror/files/mpdecimal-4.0.0.tar.gz",
+    "sha256": "942445c3245b22730fd41a67a7c5c231d11cb1b9936b9c0f76334fb7d0b4468c"
+  },
+  {
+    "file": "openpyxl-3.1.5.tar.gz",
+    "url": "https://files.pythonhosted.org/packages/3d/f9/88d94a75de065ea32619465d2f77b29a0469500e99012523b91cc4141cd1/openpyxl-3.1.5.tar.gz",
+    "sha256": "cf0e3cf56142039133628b5acffe8ef0c12bc902d2aadd3e0fe5878dc08d1050"
+  },
+  {
+    "file": "openssl-3.5.7.tar.gz",
+    "url": "https://github.com/openssl/openssl/releases/download/openssl-3.5.7/openssl-3.5.7.tar.gz",
+    "sha256": "a8c0d28a529ca480f9f36cf5792e2cd21984552a3c8e4aa11a24aa31aeac98e8"
+  },
+  {
+    "file": "packaging-26.3.tar.gz",
+    "url": "https://files.pythonhosted.org/packages/7d/fa/3944b40b07da9ce895c0e6303a5ab7d53da063554f534556b134a54d6093/packaging-26.3.tar.gz",
+    "sha256": "94edc256424af38762eb31306eed28beb9f0efc50a8837492c9d6fd6004aed79"
+  },
+  {
+    "file": "pyinstaller-6.12.0.tar.gz",
+    "url": "https://files.pythonhosted.org/packages/10/c0/001e86a13f9f6104613f198721c72d377fa1fc2a09550cfe1ac9a1d12406/pyinstaller-6.12.0.tar.gz",
+    "sha256": "1834797be48ce1b26015af68bdeb3c61a6c7500136f04e0fc65e468115dec777"
+  },
+  {
+    "file": "pyqt6-6.8.1.tar.gz",
+    "url": "https://files.pythonhosted.org/packages/ce/bf/ff284a136b39cb1873c18e4fca4a40a8847c84a1910c5fb38c6a77868968/pyqt6-6.8.1.tar.gz",
+    "sha256": "91d937d6166274fafd70f4dee11a8da6dbfdb0da53de05f5d62361ddf775e256"
+  },
+  {
+    "file": "pyqt6_sip-13.12.0.tar.gz",
+    "url": "https://files.pythonhosted.org/packages/d1/23/16c583dbb6b53e0494dfcf7d1a44778c82e324edda62326727b37f1a5b34/pyqt6_sip-13.12.0.tar.gz",
+    "sha256": "a7ad45c1e3cec3a2473d37ea9870b6c3baeccc560298623c8eb59265714c06e2"
+  },
+  {
+    "file": "python-build-standalone-20260814.tar.gz",
+    "url": "https://github.com/astral-sh/python-build-standalone/archive/refs/tags/20260814.tar.gz",
+    "sha256": "aefcd50f11a2c6e894c8bc32d194f89350a811bc5143432436f355768abc29f5"
+  },
+  {
+    "file": "pywin32-b312.tar.gz",
+    "url": "https://github.com/mhammond/pywin32/archive/refs/tags/b312.tar.gz",
+    "sha256": "71d959a9f18cf86001e5dca1e30d5046c187eabbb08112cb6ff01e04689f6f7b"
+  },
+  {
+    "file": "pywin32-ctypes-0.2.3.tar.gz",
+    "url": "https://files.pythonhosted.org/packages/85/9f/01a1a99704853cb63f253eea009390c88e7131c67e66a0a02099a8c917cb/pywin32-ctypes-0.2.3.tar.gz",
+    "sha256": "d162dc04946d704503b2edc4d55f3dba5c1d539ead017afa00142c38b9885755"
+  },
+  {
+    "file": "qtbase-everywhere-src-6.8.2.tar.xz",
+    "url": "https://download.qt.io/archive/qt/6.8/6.8.2/submodules/qtbase-everywhere-src-6.8.2.tar.xz",
+    "sha256": "012043ce6d411e6e8a91fdc4e05e6bedcfa10fcb1347d3c33908f7fdd10dfe05"
+  },
+  {
+    "file": "qtimageformats-everywhere-src-6.8.2.tar.xz",
+    "url": "https://download.qt.io/archive/qt/6.8/6.8.2/submodules/qtimageformats-everywhere-src-6.8.2.tar.xz",
+    "sha256": "d2a1bbb84707b8a0aec29227b170be00f04383fbf2361943596d09e7e443c8e1"
+  },
+  {
+    "file": "qtsvg-everywhere-src-6.8.2.tar.xz",
+    "url": "https://download.qt.io/archive/qt/6.8/6.8.2/submodules/qtsvg-everywhere-src-6.8.2.tar.xz",
+    "sha256": "aa2579f21ca66d19cbcf31d87e9067e07932635d36869c8239d4decd0a9dc1fa"
+  },
+  {
+    "file": "qttranslations-everywhere-src-6.8.2.tar.xz",
+    "url": "https://download.qt.io/archive/qt/6.8/6.8.2/submodules/qttranslations-everywhere-src-6.8.2.tar.xz",
+    "sha256": "d2106e8a580bfd77702c4c1840299288d344902b0e2c758ca813ea04c6d6a3d1"
+  },
+  {
+    "file": "setuptools-84.0.0.tar.gz",
+    "url": "https://files.pythonhosted.org/packages/6d/44/f5da03a8ef95d369145c5bb53050e7877c9f3d312e128605fd9504829143/setuptools-84.0.0.tar.gz",
+    "sha256": "f4695c21257f0d9b537ec2692c941d02ee143b7cc1276941349a546573b2ef73"
+  },
+  {
+    "file": "sqlite-autoconf-3530100.tar.gz",
+    "url": "https://www.sqlite.org/2026/sqlite-autoconf-3530100.tar.gz",
+    "sha256": "83e6b2020a034e9a7ad4a72feea59e1ad52f162e09cbd26735a3ffb98359fc4f"
+  },
+  {
+    "file": "typing_extensions-4.16.0.tar.gz",
+    "url": "https://files.pythonhosted.org/packages/f6/cc/6253133b5bb138fc3306cebfbda2c520f545d36b5be2c7255cc528bb45d6/typing_extensions-4.16.0.tar.gz",
+    "sha256": "dc983d19a509c94dba722ee6abd33940f7c05a89e243c47e907eb4db6f1a43e5"
+  },
+  {
+    "file": "xz-5.8.3.tar.gz",
+    "url": "https://github.com/tukaani-project/xz/releases/download/v5.8.3/xz-5.8.3.tar.gz",
+    "sha256": "3d3a1b973af218114f4f889bbaa2f4c037deaae0c8e815eec381c3d546b974a0"
+  },
+  {
+    "file": "zlib-1.3.2.tar.gz",
+    "url": "https://github.com/madler/zlib/releases/download/v1.3.2/zlib-1.3.2.tar.gz",
+    "sha256": "bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16"
+  }
+]

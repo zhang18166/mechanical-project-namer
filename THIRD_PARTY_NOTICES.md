@@ -1,6 +1,6 @@
 # 第三方依赖说明
 
-本候选未捆绑第三方源码、库二进制、原图标或 SOLIDWORKS 软件。以下据本机安装元数据记录，依赖自身的版权与完整条款仍然有效。
+源码仓库未捆绑第三方库二进制、原图标或 SOLIDWORKS 软件。Windows 安装包包含必要运行库，完整原始许可与归属放在安装目录的 `licenses`，对应源码材料放在同一 Release。以下依据构建环境元数据记录，依赖自身的版权与完整条款仍然有效。
 
 | 依赖 | 版本 | 元数据许可证 |
 | --- | --- | --- |
@@ -18,4 +18,8 @@ PyQt 官方说明：https://riverbankcomputing.com/software/pyqt/intro
 
 商业与 GPL 许可说明：https://riverbankcomputing.com/commercial/license-faq
 
-未来分发 EXE 时，应另行核对所有实际打包的直接和传递依赖，附上适用许可证、归属声明和对应源码获取方式。本清单不替代第三方完整许可文本。本项目自有代码采用 GPL-3.0-only，第三方组件不会因此被重新许可。
+安装包还包含 CPython 及其运行库、httpcore、anyio、h11、idna、certifi、et_xmlfile、jaraco 系列和相应传递依赖。实际构建环境清单、版本与各组件原始许可随包提供，完整源码材料的文件与哈希见 Release。许可收集也可能包含只用于构建/测试的环境组件，它们不意味着其全部代码都随程序执行。
+
+Python、libffi、OpenSSL、SQLite 及 Microsoft 运行库保留各自条款。Qt DLL 动态链接且未修改，允许以相容的修改版本替换和调试。Microsoft 运行库仅用于受支持的 Windows 平台，不被重新授予 GPL 许可。程序不附加第三方许可之外的使用或调试限制。
+
+本清单不替代随包第三方完整许可文本。本项目自有代码采用 GPL-3.0-only，第三方组件不会因此被重新许可。
