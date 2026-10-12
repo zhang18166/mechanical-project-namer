@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mechanical-project-namer"
+version = "1.6.1"
+description = "Windows desktop assistant for mechanical project drawing numbers with local AI memory"
+requires-python = ">=3.12,<3.13"
+license = {text = "GPL-3.0-only"}
+authors = [{name = "zhang18166"}]
+dependencies = [
+  "PyQt6==6.8.1",
+  "httpx==0.28.1",
+  "keyring==25.6.0",
+  "pywin32==312",
+  "openpyxl==3.1.5",
+]
+
+[project.optional-dependencies]
+test = ["pytest==8.3.5", "pytest-qt==4.4.0"]
+build = ["PyInstaller==6.12.0"]
+
+[project.scripts]
+mechanical-project-namer = "mechanical_project_namer.app:main"
+
+[tool.setuptools.packages.find]
+include = ["mechanical_project_namer*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
