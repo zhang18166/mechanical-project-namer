@@ -5,6 +5,8 @@ import logging
 
 from keyring.backends.Windows import WinVaultKeyring
 
+from ..development import is_development
+
 
 LOGGER = logging.getLogger(__name__)
 SERVICE_NAME = "MechanicalProjectNamer.DeepSeek"
@@ -17,9 +19,12 @@ class CredentialStoreError(RuntimeError):
 
 class CredentialStore:
     def __init__(self, backend=None) -> None:
-        self.backend = backend or WinVaultKeyring()
+        self._development = is_development()
+        self.backend = None if self._development else (backend or WinVaultKeyring())
 
     def get_api_key(self) -> str | None:
+        if self._development:
+            return None
         try:
             value = self.backend.get_password(SERVICE_NAME, ACCOUNT_NAME)
             return value.strip() if value and value.strip() else None
@@ -28,6 +33,8 @@ class CredentialStore:
             raise CredentialStoreError("无法读取 Windows 凭据管理器中的 API Key。") from error
 
     def set_api_key(self, api_key: str) -> None:
+        if self._development:
+            raise CredentialStoreError("隔离开发模式禁止读写 Windows 凭据。")
         value = api_key.strip()
         if not value:
             raise CredentialStoreError("API Key 不能为空。")
@@ -38,6 +45,8 @@ class CredentialStore:
             raise CredentialStoreError("无法将 API Key 保存到 Windows 凭据管理器。") from error
 
     def delete_api_key(self) -> None:
+        if self._development:
+            raise CredentialStoreError("隔离开发模式禁止读写 Windows 凭据。")
         try:
             self.backend.delete_password(SERVICE_NAME, ACCOUNT_NAME)
         except Exception as error:
@@ -50,6 +59,8 @@ class CredentialStore:
         return self.get_api_key() is not None
 
     def masked_status(self) -> str:
+        if self._development:
+            return "隔离开发模式：AI 与凭据访问已禁用"
         value = self.get_api_key()
         if not value:
             return "未配置 API Key"

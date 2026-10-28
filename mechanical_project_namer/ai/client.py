@@ -8,6 +8,8 @@ from threading import Event
 
 import httpx
 
+from ..development import is_development
+
 from .models import AISuggestionResult, BalanceInfo, DiagnosticResult, ModelInfo, ModelTestResult, StreamEvent
 from .prompt_builder import build_messages
 from .quality import assess_naming_quality
@@ -53,6 +55,8 @@ class AIClient:
         self._last_response_meta: dict = {}
 
     def _client(self, timeout: float | None = None) -> httpx.Client:
+        if is_development():
+            raise AIClientError("隔离开发模式禁止真实 AI 请求。", code="development_disabled", stage="开发隔离")
         if self.http_client is not None:
             return self.http_client
         return httpx.Client(timeout=httpx.Timeout(timeout or self.request_timeout, connect=self.connect_timeout))

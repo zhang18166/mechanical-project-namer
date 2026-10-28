@@ -6,6 +6,7 @@ from ctypes import wintypes
 from dataclasses import dataclass
 
 from .errors import SolidWorksError
+from ..development import is_development
 
 
 TH32CS_SNAPPROCESS = 0x00000002
@@ -100,6 +101,8 @@ def require_single_process(processes: list[ProcessInfo] | None = None) -> Proces
 
 
 def connect_active_application():
+    if is_development():
+        raise SolidWorksError("development_disabled", "隔离开发模式禁止连接 SOLIDWORKS。", "connection")
     try:
         import pythoncom
         import win32com.client

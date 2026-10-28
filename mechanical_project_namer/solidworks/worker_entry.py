@@ -10,6 +10,7 @@ from pathlib import Path
 from .bridge import SolidWorksBridge
 from .errors import SolidWorksError
 from .models import OperationRequest, OperationResult
+from ..development import is_development
 
 
 def _write_json(path: str, payload: dict) -> None:
@@ -34,6 +35,8 @@ def _configure_utf8_stdio() -> None:
 
 
 def run_worker(request_file: str, bridge: SolidWorksBridge | None = None) -> int:
+    if is_development():
+        raise SolidWorksError("development_disabled", "隔离开发模式禁止运行 SOLIDWORKS Worker。", "worker")
     _configure_utf8_stdio()
     raw = json.loads(Path(request_file).read_text(encoding="utf-8"))
     request = OperationRequest.from_dict(raw)

@@ -1,0 +1,121 @@
+# 第一步基线与安全验收
+
+> 以下保留原工作区 Phase 0 的历史验收。表内 Git 状态和本机接管文件清单描述当时原工作区，不是公开归档分支；公开分支只收录审查过的源码、测试和脱敏文档，未收录私有接管报告或截图。归档进度见 [PROGRESS](PROGRESS.md)。
+
+验收日期：2026-10-28（Asia/Shanghai）。结论：**PASS（仅限本轮安全接管与隔离开发范围）**。下一阶段未开始。需求见 [REQUIREMENTS.md](REQUIREMENTS.md)，后续范围见 [PLAN.md](PLAN.md)。
+
+## 实际项目与环境
+
+| 项目 | 本地核实结果 |
+| --- | --- |
+| 工作目录与仓库 | 初始目录为包含多个历史版本的父目录；实际活跃仓库为 `<workspace>/机械项目命名助手_V1.1.0_AI增强版`，与接管文档及 Git 一致；未修改其他源码副本 |
+| 源码版本 | `pyproject.toml` 与 `mechanical_project_namer/__init__.py` 均为 **1.7.1**；原 README 的 1.6.1 已更正；未改变正式版本号 |
+| 原分支 / HEAD | `master` / `9e63aec9a1e83d023fb1c79c431839e18604ee11`，2026-10-21 的交付文档提交 |
+| 初始工作区 | Git 工作区干净，无未提交或未跟踪条目；存在被忽略的历史备份、发布包、临时验证材料，已纳入保护 |
+| 当前分支 | 新建本地 `codex/mechanical-workbench-phase0`，HEAD 不变；本轮改动均未提交 |
+| 远端 | 本地未配置远端；未 fetch、覆盖源码、push、建 PR 或发布；按可能公开的仓库边界处理新增内容 |
+| 项目规则 | 检查父级与仓库内 AGENTS.md，原本不存在；无独立贡献说明；已读 README、pyproject、依赖、接管/状态文档、启动/路径/编号/数据库/导出/AI/SW 代码及 23 个原测试文件 |
+| Python | 复用现有项目 `.venv`，CPython **3.12.14**；要求 `>=3.12,<3.13` |
+| 核心依赖 | PyQt6 6.8.1（Qt 6.8.2）、httpx 0.28.1、keyring 25.6.0、pywin32 312、openpyxl 3.1.5；pytest 8.3.5 / pytest-qt 4.4.0；匹配声明，`pip check` 通过 |
+| 启动链 | `python -m mechanical_project_namer` 或 `launcher.py` → `app.main()` → 日志/Qt/单实例/设置/SQLite 迁移/控制器；无开发参数时保留原默认路径和行为分支 |
+
+个人绝对路径、进程 ID、完整备份清单、文件校验、JUnit 和截图均在仓库外的本地报告，不进入本文件。
+
+## 真实数据位置与备份恢复
+
+正式路径由 `paths.py` 生成：
+
+- `%LOCALAPPDATA%/MechanicalProjectNamer/data/mechanical_project_namer.db`：实际存在。
+- `%APPDATA%/MechanicalProjectNamer/settings.json`：实际存在。
+- `%LOCALAPPDATA%/MechanicalProjectNamer/{ai_memory,exports,logs,backups,sw_test}`：实际存在，已保护。
+- API Key 属于 Windows 凭据；本轮没有读取、展示或导出，不在备份内。恢复数据不意味着凭据已恢复。
+
+在运行任何可能写数据的程序或测试前，已在 `<local-backup-root>/mechanical-workbench-phase0-<timestamp>` 完成备份。覆盖源码、Git 元数据、配置、未跟踪/被忽略的用户材料、历史备份和 release/tmp 中保留的材料，以及上述正式数据目录。排除 `.venv`、`build`、`dist`、`__pycache__`、`.pytest_cache` 等可重建环境或缓存；未删除原文件。
+
+验证结果：**9,279 个清单条目全部 SHA-256 复核通过，3,201 个 SQLite 文件采用在线 backup API 生成自包含快照并通过完整性检查**（大部分来自历史测试与备份材料）。原 WAL/SHM 旁路保存为原始诊断材料，不混入快照恢复目录；未把主库单独拷贝宣称完整备份。
+
+已在单独目录恢复 **602 个文件**，涵盖当前全部 **349 个受版本管理文件**、Git 元数据及正式数据/配置；恢复仓库 HEAD 与原始 HEAD 一致，Git 工作区干净。恢复的 **7 个正式目录 SQLite 快照**重新通过 `integrity_check`、表行数及全表内容摘要核对。旧包、大量历史测试材料已备份并校验，但未逐一执行完整运行恢复。未向正式位置覆盖恢复。
+
+注意本轮发现并已处理的工具副作用：SQLite `mode=ro` 仍可能创建空 WAL/SHM。备份读取一度产生辅助文件；仅对清单证明原本不存在、WAL 为零字节、SHM 校验匹配且主库可独占打开的本轮文件执行移除，未移除原有侧文件。最终正式目录的文件集合、SHA-256、大小和修改时间与操作前完全一致，业务库及设置未变。以后对已生成的自包含快照做只读验证使用 `immutable=1`；不能对可能仍有待合并 WAL 的活动源库这样处理。
+
+恢复方法：
+
+1. 先关闭对应正式或开发实例；不要在被其他进程使用时替换数据库。
+2. 从仓库外 `manifest.json` 按 SHA-256 校验选定文件；先恢复到新的空目录，恢复源码与配置，虚拟环境按锁定依赖单独重建。
+3. 使用 `local/data` 内的在线 SQLite 快照恢复主库，不拼接 `raw-sidecars` 的旧 WAL/SHM。对恢复副本检查完整性、业务行数和摘要，再核对配置及外部 CAD 路径；源工程备份必须配套可用。
+4. 本轮只演练了独立目录恢复。覆盖正式位置、安装或部署、凭据重新配置和真实 CAD 恢复需要另行安排；本轮未做。
+
+备份只保存在同机仓库外，属于本轮可恢复保护，不等同于异地冷备份或完整灾难恢复。
+
+## 自动化结果与能力分类
+
+| 运行 | 通过 | 失败 | 错误 | 跳过 | 证据 |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 修改前原程序基线 | 372 | 0 | 0 | 0 | 仓库外 baseline-test-run/JUnit；约 66.6 秒 |
+| 最终完整回归（含新增隔离测试） | 386 | 0 | 0 | 0 | 仓库外 test-runs/JUnit；约 27.3 秒 |
+
+未删除断言、屏蔽失败或引入 skip/xfail。本轮没有发现自动化失败；不推断所有真实场景均无缺陷。测试审查发现原程序缺少集中隔离保障：部分默认导出、日志和 Shell 构造可依赖用户路径，真实凭据/COM/热键亦未被统一禁止。修改前先用仓库外测试守卫运行，现已把同类保护固化在 `tests/conftest.py`。AI 用 httpx MockTransport，SW 用显式假对象；真实网络、凭据、COM、Windows 热键注册一旦触发即失败。
+
+| 能力 | 分类 / 本轮证据 |
+| --- | --- |
+| 项目、模块、名称与编号 | 已有且验证通过：独立计数、预览/复制不推进、保存成功推进、事务失败回滚、查重、作废/已占用不误用、手动编号边界及重启保存 |
+| 总成规则 | 已有且验证通过：历史分类编号接口每项目/模块总成 000 单例及迁移恢复；当前 1.7.1 简化首页使用通用 001–999 编号，不能把历史接口测试表述为新首页提供总成入口 |
+| 搜索、历史、导出 | 已有且自动化验证通过：当前/全部项目搜索，中文备注，JSON/CSV/Excel/PDF 生成与失败保留主库；人工打印及所有真实文档排版未验证 |
+| SW 保留号、事务与恢复 | 已有且模拟测试验证通过；真实正在运行的 SOLIDWORKS 未连接，真实创建/保存/装配引用行为未验证 |
+| AI、记忆 | 已有且模拟测试验证通过；真实 API、账号余额和 Windows 凭据未验证 |
+| 正式入口与安装包 | 现有代码和包保留；本轮未启动正式数据实例、未重建包、未安装/卸载或切换 release；不能写成实机通过 |
+| 文档与开发风险 | 已有问题：README 版本滞后、历史“完整沙箱”说明缺少凭据/热键边界；本轮已更正并补充强制隔离入口，无业务重写 |
+| 工作台新功能 | 尚未实现：统一远程身份、资料库、查看器、云/NAS、权限、发布、缓存治理和分享；只记录约束与阶段计划 |
+
+## 隔离开发入口（已实现且实际启动）
+
+在 `<repo>` 的 PowerShell 中：
+
+```powershell
+.\scripts\dev.ps1
+# 可重复冒烟：打开实际 Qt 窗口，生成报告/截图后退出
+.\scripts\dev.ps1 -Smoke
+# 另一份独立、仓库外的演示配置
+.\scripts\dev.ps1 -DevRoot '<新的开发专用目录>'
+# 全量隔离回归，结果留在仓库外
+.\scripts\test_workbench.ps1
+```
+
+底层命令为 `.venv/Scripts/python.exe -m mechanical_project_namer --dev`；可追加 `--dev-root <目录>`、`--dev-smoke`。脚本强制传入 `--dev`。若本机执行策略禁止脚本，应使用底层命令，不修改全局执行策略。缺少 `.venv` 时按 README 创建项目专用环境，不全局升级依赖。
+
+默认专用根为 `%LOCALAPPDATA%/MechanicalWorkbenchDev/phase0`：
+
+| 内容 | 隔离路径 |
+| --- | --- |
+| SQLite、AI 本地记忆、导出、日志 | `<dev-root>/local/MechanicalProjectNamer/{data,ai_memory,exports,logs}` |
+| 设置 | `<dev-root>/roaming/MechanicalProjectNamer/settings.json` |
+| 缓存、临时文件、冒烟报告和截图 | `<dev-root>/cache`（临时文件为 cache/tmp） |
+| 虚构工作区 | `<dev-root>/workspace/DEMO`，与缓存分开 |
+| 单实例资源 | 路径哈希生成的 `MechanicalWorkbench.Dev.<hash>` 与隔离临时目录；忽略继承的正式实例名 |
+
+开发根必须为新空目录或有正确标识的专用目录；拒绝与正式目录/源码仓库重叠，拒绝未知非空目录及内部链接/目录联接。修改只限开发进程的环境，不更改用户或系统环境。
+
+开发模式不构造 Windows 凭据后端，禁止 Key 写入/删除；AI 请求在 HTTP 客户端创建前阻断，SW 控制器/Worker/COM 连接均有守卫，且不注册全局快捷键。恢复队列、导出和记忆只处理隔离库。不访问腾讯云/飞牛。现有正式模式的分支保持原有行为；无开发参数的路径与环境不变已由回归验证，未使用真实库启动来验证。
+
+已实际执行默认入口两次冒烟，退出码均为 0，保存的窗口截图已检查；可见窗口为虚构 DEMO 项目，生成 SW 按钮禁用。两次均为 1 项目/1 名称记录、下一编号 002；重启不重复演示数据。14 项新增测试覆盖目录拒绝、全部存储路径、默认路径不变、凭据/AI/SW 禁止、重复启动幂等及单实例通知路由；单实例路由使用合成旧实例名，不占用现用软件的正式标识。
+
+这是进程内的开发配置隔离，不是操作系统访问沙箱。只在虚构工作区操作，不将开发项目指向真实 CAD、生产目录或网络共享。
+
+## 变更文件与收尾
+
+| 文件 | 用途 |
+| --- | --- |
+| `mechanical_project_namer/development.py` | 参数、专用目录验证、隔离进程环境、实例身份和幂等演示数据 |
+| `mechanical_project_namer/app.py` | 早于日志/Qt/数据初始化启用隔离，开发时禁用热键/SW入口，实际窗口冒烟 |
+| `mechanical_project_namer/security/credential_store.py` | 开发时不访问 Windows 凭据 |
+| `mechanical_project_namer/ai/client.py` | 开发时禁止真实 AI HTTP 请求 |
+| `mechanical_project_namer/solidworks/{controller,connection,worker_entry}.py` | 开发时阻止 Worker 和真实 COM |
+| `scripts/dev.ps1`、`scripts/test_workbench.ps1` | Windows 开发/测试入口，复用项目环境，证据输出仓库外 |
+| `tests/conftest.py`、`tests/test_workbench_development.py` | 默认测试隔离守卫与 14 项隔离回归 |
+| `AGENTS.md`、`.gitignore`、`README.md` | 长期规则、运行数据忽略规则、准确版本与入口索引 |
+| `docs/workbench/{REQUIREMENTS,BASELINE,PLAN}.md` | 已确认需求、实际验收、未来阶段及明确边界 |
+| `PROJECT_HANDOVER.md`、`CURRENT_GOAL_STATUS.md` | 添加本阶段索引，保留全部历史内容 |
+
+收尾核查：diff 和新增文件已审查；未新增真实 CAD、运行库、密钥、个人绝对路径、截图或备份到可提交集合；版本控制中没有运行 SQLite 或 CAD 源文件。正式数据及设置前后校验一致，release 文件未改；现用软件、CAD、腾讯云、飞牛均未执行写操作。无 commit/push/PR/Release，未修改远端可见性、安装身份、全局 Codex 配置或正式版本号。
+
+本阶段没有阻塞继续扩展的环境问题。真实 AI/SW、安装/卸载、远端和未来查看器仍为“未验证”，下一阶段只按 PLAN 的阶段 1 开展；本轮停止于此。

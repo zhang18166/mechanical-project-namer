@@ -23,3 +23,11 @@ settings.json
 /ai_memory/
 *.zip
 *.exe
+
+# Workbench development resources and private local evidence
+.workbench-dev/
+.workbuddy/
+*.pem
+*.key
+*.p12
+*.pfx

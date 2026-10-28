@@ -1,6 +1,6 @@
 # 机械项目命名助手 V1.7.1
 
-本分支先归档经审查的本地 V1.7.1 源码基线；历史 MSI 预览仍为 1.6.1。本次不构建安装包、不迁移生产数据、不进入 Phase 2；后续 Phase 0 提交提供隔离开发入口。旧打包脚本含 1.6.1 固定元数据，未验收其用于当前版本。
+本分支归档 V1.7.1 源码与 Phase 0 隔离开发基础，应用版本仍为 1.7.1、数据库 Schema 11。阶段事实见 [PROGRESS](docs/workbench/PROGRESS.md)，需求、基线与计划见 [docs/workbench](docs/workbench/BASELINE.md)。历史 MSI 预览仍为 1.6.1；本次不构建安装包、不迁移生产数据、不进入 Phase 2。旧打包脚本含 1.6.1 固定元数据，未验收其用于当前版本。
 
 Windows 桌面工具，管理机械项目代号、模块和零件编号，支持名称复制、历史记录、SQLite 本地存储、CSV / Excel / PDF 导出、可选 AI 命名和 SOLIDWORKS 联动。
 
@@ -23,6 +23,18 @@ py -3.12 -m venv .venv
 ```
 
 也可运行 `launcher.py`。仓库仅保存源码，安装包在 Releases；构建方法见 [packaging/README.md](packaging/README.md)。
+
+## 隔离开发与测试
+
+```powershell
+.\scripts\dev.ps1
+.\scripts\dev.ps1 -Smoke
+.\scripts\test_workbench.ps1
+```
+
+开发数据默认在 `%LOCALAPPDATA%\MechanicalWorkbenchDev\phase0`；可用 `-DevRoot <新的仓库外专用目录>` 指定另一份配置。开发模式隔离数据、设置、导出、日志、缓存及单实例标识，禁用真实 AI、Windows 凭据、SOLIDWORKS 与全局快捷键；只使用虚构数据。`-Smoke` 打开真实窗口并生成仓库外报告后退出。此模式不是操作系统访问沙箱，不将项目指向真实 CAD 或网络共享。
+
+测试默认使用独立配置并阻止真实网络、凭据、COM 和热键；完整 JUnit 保存在仓库外。本分支沿用公开仓库的 Qt 标准图标，不上传本机图标资源。
 
 ## 使用
 

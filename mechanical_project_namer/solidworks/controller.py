@@ -11,6 +11,7 @@ from pathlib import Path
 from PyQt6.QtCore import QObject, QProcess, QProcessEnvironment, QTimer, pyqtSignal
 
 from ..logging_setup import solidworks_logger
+from ..development import is_development
 from ..safe_fs import remove_file
 from .errors import SolidWorksError
 from .models import OperationRequest, OperationResult
@@ -41,6 +42,8 @@ class SolidWorksWorkerController(QObject):
         return self.process is not None
 
     def start(self, request: OperationRequest, timeout_seconds: int) -> None:
+        if is_development():
+            raise SolidWorksError("development_disabled", "隔离开发模式禁止启动 SOLIDWORKS 辅助进程。", "worker")
         if self.busy:
             raise SolidWorksError("already_running", "已有SOLIDWORKS创建任务正在运行。", "worker")
         runtime = Path(tempfile.gettempdir()) / "MechanicalProjectNamer" / "solidworks_worker"
