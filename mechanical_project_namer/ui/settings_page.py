@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
 
 from ..paths import database_path, exports_dir, logs_dir
 from ..settings import AppSettings
+from .common import FlowLayout
 
 
 class SettingsPage(QWidget):
@@ -23,7 +24,15 @@ class SettingsPage(QWidget):
         layout = QVBoxLayout(self)
         title = QLabel("设置")
         title.setObjectName("pageTitle")
-        layout.addWidget(title)
+        header = QHBoxLayout()
+        header.addWidget(title)
+        header.addStretch()
+        self.save_button = QPushButton("保存设置")
+        self.save_button.setProperty("kind", "primary")
+        self.save_button.setToolTip("保存 AI、SOLIDWORKS 和窗口设置；API Key 使用单独的保存按钮。")
+        self.save_button.clicked.connect(lambda: self.save_requested.emit(self.values()))
+        header.addWidget(self.save_button)
+        layout.addLayout(header)
         self.tabs = QTabWidget()
         self.tabs.addTab(self._scrollable(self._build_ai_tab(settings), "aiSettingsScroll"), "DeepSeek AI 设置")
         self.tabs.addTab(self._scrollable(self._build_memory_tab(), "memorySettingsScroll"), "AI 命名记忆")
@@ -43,10 +52,27 @@ class SettingsPage(QWidget):
 
     @staticmethod
     def _configure_form(form: QFormLayout) -> None:
-        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.DontWrapRows)
+        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         form.setVerticalSpacing(10)
+
+    @staticmethod
+    def _folded_section(layout, title: str):
+        toggle = QPushButton(f"展开{title}")
+        toggle.setProperty("kind", "ghost")
+        toggle.setCheckable(True)
+        content = QWidget()
+        content.setVisible(False)
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        def toggled(expanded):
+            content.setVisible(expanded)
+            toggle.setText(f"{'收起' if expanded else '展开'}{title}")
+        toggle.toggled.connect(toggled)
+        layout.addWidget(toggle, alignment=Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(content)
+        return toggle, content, content_layout
 
     def _build_ai_tab(self, settings: AppSettings) -> QWidget:
         page = QWidget()
@@ -81,8 +107,10 @@ class SettingsPage(QWidget):
         self.model_combo.setEditable(False)
         self.model_combo.currentIndexChanged.connect(self._clear_manual_model_override)
         self.manual_model = QLineEdit()
-        self.manual_model.setPlaceholderText("折叠兼容入口：手动输入模型 ID")
+        self.manual_model.setPlaceholderText("需要兼容其他模型时填写；优先于模型列表")
+        self.manual_model.textChanged.connect(self._update_model_hint)
         self.model_source = QLabel("模型列表：未读取")
+        self.model_source.setWordWrap(True)
         model_buttons = QHBoxLayout()
         self.ai_action_buttons: list[QPushButton] = []
         for label, action, kind in (("读取 / 刷新模型", "discover_models", "secondary"), ("测试所选模型", "test_model", "secondary")):
@@ -108,17 +136,23 @@ class SettingsPage(QWidget):
         self._update_reasoning_state()
         model_form.addRow("可用模型", self.model_combo)
         model_form.addRow("模型状态", self.model_source)
-        model_form.addRow("手动模型 ID", self.manual_model)
         model_form.addRow("", model_buttons)
         model_form.addRow("思考模式", self.thinking)
         model_form.addRow("推理级别", self.reasoning)
-        model_form.addRow("JSON容错", self.json_auto_repair)
         layout.addWidget(model_group)
+        self.ai_advanced_toggle, self.ai_advanced_content, advanced_layout = self._folded_section(layout, "高级设置与诊断")
+        compatibility = QGroupBox("模型兼容")
+        compatibility_form = QFormLayout(compatibility)
+        self._configure_form(compatibility_form)
+        compatibility_form.addRow("手动模型 ID", self.manual_model)
+        compatibility_form.addRow("JSON容错", self.json_auto_repair)
+        advanced_layout.addWidget(compatibility)
         diagnostics = QGroupBox("连接诊断")
         diag_layout = QVBoxLayout(diagnostics)
         self.diagnostic_label = QLabel("尚未测试")
         self.diagnostic_label.setWordWrap(True)
-        diag_buttons = QHBoxLayout()
+        diag_buttons_widget = QWidget()
+        diag_buttons = FlowLayout(diag_buttons_widget, spacing=8)
         for label, action in (("检查 Key 与网络", "check_connection"), ("读取账户信息", "balance"), ("完整测试", "full_test")):
             button = QPushButton(label)
             button.setProperty("kind", "secondary")
@@ -131,10 +165,9 @@ class SettingsPage(QWidget):
         self.ai_cancel.setVisible(False)
         self.ai_cancel.clicked.connect(self.ai_cancel_requested)
         diag_buttons.addWidget(self.ai_cancel)
-        diag_buttons.addStretch()
         diag_layout.addWidget(self.diagnostic_label)
-        diag_layout.addLayout(diag_buttons)
-        layout.addWidget(diagnostics)
+        diag_layout.addWidget(diag_buttons_widget)
+        advanced_layout.addWidget(diagnostics)
         time_group = QGroupBox("超时")
         time_form = QFormLayout(time_group)
         self._configure_form(time_form)
@@ -150,11 +183,7 @@ class SettingsPage(QWidget):
         time_form.addRow("连接超时", self.connect_timeout)
         time_form.addRow("普通 API 请求", self.request_timeout)
         time_form.addRow("AI 生成总超时", self.generation_timeout)
-        layout.addWidget(time_group)
-        save = QPushButton("保存 AI 设置")
-        save.setProperty("kind", "primary")
-        save.clicked.connect(lambda: self.save_requested.emit(self.values()))
-        layout.addWidget(save, alignment=Qt.AlignmentFlag.AlignLeft)
+        advanced_layout.addWidget(time_group)
         layout.addStretch()
         self.set_model_values(settings.available_models or [], settings.model_list_source, settings.model_list_updated_at, settings.model_name)
         return page
@@ -184,15 +213,15 @@ class SettingsPage(QWidget):
              ("清空 AI 学习记录", "clear_learning", "danger")),
         )
         for row in actions:
-            buttons = QHBoxLayout()
+            row_widget = QWidget()
+            buttons = FlowLayout(row_widget, spacing=8)
             for label, action, kind in row:
                 button = QPushButton(label)
                 button.setProperty("memoryAction", True)
                 button.setProperty("kind", kind)
                 button.clicked.connect(lambda _checked=False, action=action: self.memory_action_requested.emit(action))
                 buttons.addWidget(button)
-            buttons.addStretch()
-            layout.addLayout(buttons)
+            layout.addWidget(row_widget)
         return page
 
     def _build_general_tab(self, settings: AppSettings) -> QWidget:
@@ -214,10 +243,6 @@ class SettingsPage(QWidget):
         for label, value in (("SQLite 数据库", database_path()), ("开放数据", exports_dir()), ("日志", logs_dir())):
             item = QLineEdit(str(value)); item.setReadOnly(True); paths_form.addRow(label, item)
         layout.addWidget(paths)
-        save = QPushButton("保存窗口设置")
-        save.setProperty("kind", "primary")
-        save.clicked.connect(lambda: self.save_requested.emit(self.values()))
-        layout.addWidget(save, alignment=Qt.AlignmentFlag.AlignLeft)
         layout.addStretch()
         return page
 
@@ -265,7 +290,9 @@ class SettingsPage(QWidget):
         form.addRow("编号推进", self.sw_advance)
         form.addRow("整体超时", self.sw_timeout)
         layout.addWidget(integration)
-        actions = QHBoxLayout()
+        self.sw_advanced_toggle, self.sw_advanced_content, advanced_layout = self._folded_section(layout, "SOLIDWORKS诊断工具")
+        action_widget = QWidget()
+        actions = FlowLayout(action_widget, spacing=8)
         self.sw_action_buttons: list[QPushButton] = []
         for label, action in (
             ("测试SOLIDWORKS连接", "sw_test_connection"),
@@ -279,12 +306,7 @@ class SettingsPage(QWidget):
             button.clicked.connect(lambda _checked=False, action=action: self.action_requested.emit(action, self.values()))
             self.sw_action_buttons.append(button)
             actions.addWidget(button)
-        actions.addStretch()
-        layout.addLayout(actions)
-        save = QPushButton("保存SOLIDWORKS设置")
-        save.setProperty("kind", "primary")
-        save.clicked.connect(lambda: self.save_requested.emit(self.values()))
-        layout.addWidget(save, alignment=Qt.AlignmentFlag.AlignLeft)
+        advanced_layout.addWidget(action_widget)
         layout.addStretch()
         return page
 
@@ -315,6 +337,7 @@ class SettingsPage(QWidget):
         self.sw_status.setText(text)
         if template_path:
             self.sw_default_template.setText(template_path)
+            self.sw_status.setToolTip(text)
 
     def set_solidworks_busy(self, busy: bool) -> None:
         for button in self.sw_action_buttons:
@@ -343,7 +366,15 @@ class SettingsPage(QWidget):
             button.setText(str(button.property("idleText")))
         self.ai_cancel.setVisible(busy)
         if busy:
+            self.ai_advanced_toggle.setChecked(True)
             self.diagnostic_label.setText(f"{title}：正在启动，请稍候……")
+
+    def _update_model_hint(self, _text: str = "") -> None:
+        label = getattr(self, "_model_source_text", "未读取模型列表")
+        manual = self.manual_model.text().strip()
+        if manual:
+            label += f" · 当前手动模型：{manual}（高级设置）"
+        self.model_source.setText(label)
 
     def set_model_values(self, models: list[str], source: str, updated_at: str, selected: str = "") -> None:
         self.model_combo.blockSignals(True)
@@ -356,7 +387,7 @@ class SettingsPage(QWidget):
         elif models:
             preferred = self.model_combo.findData("deepseek-v4-pro")
             self.model_combo.setCurrentIndex(preferred if preferred >= 0 else 0)
-        elif selected:
+        if selected and index < 0:
             self.manual_model.setText(selected)
         self.model_combo.blockSignals(False)
         label = f"{source or '未读取模型列表'}"
@@ -364,7 +395,8 @@ class SettingsPage(QWidget):
             label += " · 上次模型尚未实时验证"
         if updated_at:
             label += f" · {updated_at}"
-        self.model_source.setText(label)
+        self._model_source_text = label
+        self._update_model_hint()
 
     def set_memory_summary(self, text: str) -> None:
         self.memory_summary.setPlainText(text)

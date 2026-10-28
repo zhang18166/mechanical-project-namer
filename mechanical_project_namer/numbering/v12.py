@@ -38,6 +38,8 @@ def compose_full_name(project_code: str, module_code: str, part_sequence: int, p
     return f"{project_code}-{module_code}-{part_sequence:03d} {part_name.strip()}".strip()
 
 def part_type_range(part_type: str) -> tuple[int, int]:
+    if part_type == "通用编号":
+        return 1, 999
     for name, _label, start, end in PART_TYPES:
         if name == part_type:
             return start, end

@@ -17,6 +17,9 @@ from ..ai import (
     MemoryPackageError, NamingMemory, NamingMemoryPackage, StreamEvent,
 )
 from ..ai.worker import AIWorker
+from ..ai.design_context import bound_messages, excerpt, explicit_preference, relevance, MAX_MEMORY_CHARS, MAX_QUESTION_CHARS
+from ..ai.design_skill import DESIGN_CHAT_SKILL
+from .design_memory_dialog import DesignMemoryDialog
 from ..ai.runtime import sanitize_log_message
 from ..data import DataExporter, Repository
 from ..data.repository import SingletonNumberExistsError
@@ -38,9 +41,13 @@ from .common import (
 from .ai_suggestions_dialog import AISuggestionsDialog
 from .ai_plan_history_dialog import AIPlanHistoryDialog
 from .main_window import MainWindow
+from .simple_window import SimpleMainWindow, SimpleProjectDialog, ModuleDialog, SimpleMiniWindow
+from ..numbering.simple import SIMPLE_TYPE, module_code as normalize_module
 from .mini_window import MiniWindow
 from .project_dialog import ProjectDialog
 from .record_dialog import RecordDetailDialog
+from .file_sync_dialog import FileScanThread, FileSyncDialog, SimpleFileSyncDialog
+from ..file_sync import READY, scan_project
 from .design_chat_dialog import DesignChatDialog
 from .project_management_dialogs import (
     DuplicateProjectDialog, NumberingStatusDialog, PermanentDeleteDialog, ProjectPropertiesDialog,
@@ -71,6 +78,9 @@ class ApplicationShell:
         self._save_in_progress = False
         self._current_records_cache = []
         self._records_cache_project = None
+        self.file_check_thread = None
+        self.file_sync_dialog = None
+        self._last_checked_project = None
         self.credential_store = CredentialStore()
         self.ai_threads: set[QThread] = set()
         self.ai_tasks: dict[AITaskType, AITaskState] = {}
@@ -93,8 +103,9 @@ class ApplicationShell:
         self.solidworks_controller = SolidWorksWorkerController()
         self.solidworks_pending_kind = ""
         self.solidworks_pending: dict = {}
-        self.main_window = MainWindow(settings)
-        self.mini_window = MiniWindow()
+        self.main_window = SimpleMainWindow(settings)
+        self.mini_window = SimpleMiniWindow()
+        self.current_part_type = SIMPLE_TYPE
         self.ai_elapsed_timer = QTimer(self.main_window)
         self.ai_elapsed_timer.setInterval(250)
         self.ai_elapsed_timer.timeout.connect(self._update_ai_elapsed)
@@ -154,6 +165,8 @@ class ApplicationShell:
         self.tray.setContextMenu(self._build_tray_menu())
 
     def refresh_current(self, record_query: str | None = None, *, refresh_records: bool = True) -> None:
+        if getattr(self.main_window, "simple_mode", False):
+            self.current_part_type = SIMPLE_TYPE
         project = None
         records = []
         if self.current_project_id is not None:
@@ -163,7 +176,8 @@ class ApplicationShell:
                     raise LookupError("当前项目已归档或移入回收站")
                 if refresh_records or self._records_cache_project != project.id:
                     query = self.main_window.current_search.text() if record_query is None else record_query
-                    self._current_records_cache = self.repository.list_records(project.id, query=query)
+                    scope_id = None if getattr(self.main_window, "simple_mode", False) and self.main_window.search_scope.currentIndex() == 1 else project.id
+                    self._current_records_cache = self.repository.list_records(scope_id, query=query)
                     self._records_cache_project = project.id
                 records = self._current_records_cache
             except LookupError:
@@ -173,9 +187,9 @@ class ApplicationShell:
         if project and modules:
             enabled = {item["module_code"] for item in modules if item.get("enabled")}
             if self.current_module_code not in enabled:
-                self.current_module_code = sorted(enabled)[0] if enabled else "03"
+                self.current_module_code = sorted(enabled)[0] if enabled else ("" if getattr(self.main_window, "simple_mode", False) else "03")
             selected = next((item for item in modules if item["module_code"] == self.current_module_code), None)
-            if selected and selected.get("last_part_type"):
+            if not getattr(self.main_window, "simple_mode", False) and selected and selected.get("last_part_type"):
                 self.current_part_type = selected["last_part_type"]
         preview = ""
         if project and self.current_module_code:
@@ -185,13 +199,66 @@ class ApplicationShell:
                 # 总成是单例：已存在时直接显示既有 000，不再回退到 legacy 图号。
                 preview = error.full_number
             except (ValueError, LookupError):
-                preview = project.next_filename
+                preview = "" if getattr(self.main_window, "simple_mode", False) else project.next_filename
         self.main_window.set_current_project(project, records, modules, self.current_module_code, self.current_part_type, preview)
         self.mini_window.set_project(project, records[:5], modules, self.current_module_code, self.current_part_type, preview)
         try:
             self.exporter.export_all(self.current_project_id)
         except Exception:
             LOGGER.exception("刷新当前项目状态快照失败")
+        self._schedule_file_check()
+
+    def _schedule_file_check(self):
+        if not getattr(self, 'app', None) or not hasattr(self.main_window, 'file_sync_status') or getattr(self, '_quitting', False):
+            return
+        if self.current_project_id is None:
+            self.main_window.file_sync_status.setText('目录检查：尚未选择项目。')
+            return
+        project = self.repository.get_project(self.current_project_id)
+        key = (project.id, project.directory, project.solidworks_part_directory)
+        if key == getattr(self, '_last_checked_project', None):
+            return
+        if getattr(self, 'file_check_thread', None):
+            self.file_check_thread.cancel.set()
+            return
+        self._last_checked_project = key
+        if not (project.directory or project.solidworks_part_directory):
+            self.main_window.file_sync_status.setText('目录检查：未设置项目目录或SW保存目录。')
+            return
+        self.main_window.file_sync_status.setText('目录检查：正在检查已有文件…')
+        worker = FileScanThread(lambda cancel: scan_project(self.repository, project.id, cancel=cancel), self.app)
+        self.file_check_thread = worker
+        def completed(result):
+            if self.current_project_id != project.id:
+                return
+            ready = sum(e.status in READY for e in result.entries)
+            pending = sum(e.status not in READY and e.status != '已登记' for e in result.entries)
+            text = f'目录检查：可登记/关联{ready}项，待核对{pending}项。'
+            if result.errors:
+                text = '目录检查未完成，请点“同步已有文件”查看原因。'
+            self.main_window.file_sync_status.setText(text)
+        def finished():
+            self.file_check_thread = None
+            worker.deleteLater()
+            self._schedule_file_check()
+        worker.succeeded.connect(completed)
+        worker.failed.connect(lambda error: self.main_window.file_sync_status.setText('目录检查未完成：' + error))
+        worker.finished.connect(finished)
+        worker.start()
+
+    def _open_file_sync(self):
+        if self.current_project_id is None:
+            QMessageBox.information(self.main_window, '尚未选择项目', '请先选择项目并设置项目目录或SW保存目录。')
+            return
+        dialog = SimpleFileSyncDialog(self.repository, self.current_project_id, self.main_window)
+        self.file_sync_dialog = dialog
+        dialog.exec()
+        self.file_sync_dialog = None
+        self._last_checked_project = None
+        self.refresh_all()
+        if dialog.imported:
+            self._refresh_memory_summary()
+            self.notify('同步完成', f'已登记/关联{dialog.imported}项；请核对当前图号后继续。')
 
     def show_last(self) -> None:
         self.show_mini() if self.settings.last_window_mode == "mini" else self.show_full()
@@ -227,6 +294,9 @@ class ApplicationShell:
         if getattr(self, "_quitting", False):
             return
         self._quitting = True
+        for thread in (getattr(self, 'file_check_thread', None), getattr(getattr(self, 'file_sync_dialog', None), 'worker', None)):
+            if thread:
+                thread.cancel.set()
         for task in tuple(self.ai_tasks.values()):
             task.cancel()
         if self.solidworks_controller.busy:
@@ -243,6 +313,9 @@ class ApplicationShell:
     def _finish_quit(self) -> None:
         # Keep the Qt event loop alive until workers have released their resources.
         if any(task.thread.isRunning() for task in self.ai_tasks.values()):
+            QTimer.singleShot(50, self._finish_quit)
+            return
+        if any(thread and thread.isRunning() for thread in (getattr(self, 'file_check_thread', None), getattr(getattr(self, 'file_sync_dialog', None), 'worker', None))):
             QTimer.singleShot(50, self._finish_quit)
             return
         self.main_window.allow_close = True
@@ -271,6 +344,7 @@ class ApplicationShell:
         main.record_search_requested.connect(self._search_records)
         main.csv_export_requested.connect(self._export_csv)
         main.record_export_requested.connect(self._export_records)
+        main.file_sync_requested.connect(self._open_file_sync)
         main.settings_page.save_requested.connect(self._save_settings_values)
         main.ai_requested.connect(self._request_ai)
         main.plan_history_requested.connect(self._show_plan_history)
@@ -392,9 +466,46 @@ class ApplicationShell:
         self.refresh_all()
         QMessageBox.information(self.main_window, "项目已永久删除", f"已删除数据库记录：{result['record_count']} 条\n删除前备份：{result['backup_path']}\n项目目录未执行删除操作。")
 
+    def _sequence_options(self):
+        source = self._active_window()
+        if self.current_part_type == SIMPLE_TYPE and hasattr(type(source), 'selected_sequence'):
+            return {"sequence_override": source.selected_sequence}
+        return {}
+
+    def _simple_module_action(self, module_code, action):
+        modules = self.repository.list_modules(self.current_project_id, enabled_only=False)
+        item = next((m for m in modules if m['module_code'] == normalize_module(module_code)), None)
+        if action == 'manage':
+            menu = QMenu(self.main_window)
+            for module in modules:
+                sub = menu.addMenu(f"{module['module_code']} · {module['module_name']}" + ("（已停用）" if not module['enabled'] else ""))
+                for label, key in [('编辑', 'edit'), ('停用' if module['enabled'] else '启用', 'toggle'), ('删除未使用模块', 'delete')]:
+                    sub.addAction(label).triggered.connect(lambda checked=False, code=module['module_code'], key=key: self._module_action(code, key))
+            menu.addAction('新增模块').triggered.connect(lambda: self._module_action('', 'create'))
+            menu.exec(self.main_window.cursor().pos())
+            return
+        if action == 'edit' and not item:
+            return
+        dialog = ModuleDialog(self.main_window, item['module_code'] if item else '', item['module_name'] if item else '')
+        while dialog.exec():
+            try:
+                if item:
+                    saved = self.repository.revise_module(self.current_project_id, module_code, dialog.code.text(), dialog.name.text())
+                else:
+                    saved = self.repository.create_module(self.current_project_id, dialog.code.text(), dialog.name.text())
+                self.current_module_code = saved['module_code']
+                self.settings.current_module_code = self.current_module_code
+                self.refresh_all()
+                return
+            except (ValueError, LookupError) as error:
+                QMessageBox.warning(dialog, '无法保存模块', str(error))
+
     def _module_action(self, module_code: str, action: str) -> None:
         if self.current_project_id is None:
             QMessageBox.information(self.main_window, "尚无项目", "请先选择当前项目。")
+            return
+        if getattr(self.main_window, "simple_mode", False) and action in {"create", "edit", "manage"}:
+            self._simple_module_action(module_code, action)
             return
         if action == "create":
             code, ok = QInputDialog.getText(self.main_window, "新增模块", "模块编号（两位数字）：")
@@ -411,7 +522,7 @@ class ApplicationShell:
             return
         if action == "edit":
             modules = self.repository.list_modules(self.current_project_id, enabled_only=False)
-            item = next((x for x in modules if x["module_code"] == str(module_code).zfill(2)), None)
+            item = next((x for x in modules if x["module_code"] == normalize_module(module_code)), None)
             if not item:
                 return
             name, ok = QInputDialog.getText(self.main_window, "编辑模块", "模块名称：", text=item["module_name"])
@@ -437,7 +548,7 @@ class ApplicationShell:
             elif action == "down":
                 self.repository.move_module(self.current_project_id, module_code, 1); self.refresh_all()
             elif action == "toggle":
-                item = next(x for x in self.repository.list_modules(self.current_project_id, enabled_only=False) if x["module_code"] == str(module_code).zfill(2))
+                item = next(x for x in self.repository.list_modules(self.current_project_id, enabled_only=False) if x["module_code"] == normalize_module(module_code))
                 self.repository.set_module_enabled(self.current_project_id, module_code, not bool(item["enabled"])); self.refresh_all()
             elif action == "delete":
                 if QMessageBox.question(self.main_window, "删除模块", "确定删除未使用模块吗？") == QMessageBox.StandardButton.Yes:
@@ -457,6 +568,14 @@ class ApplicationShell:
             self.design_chat.cancel_requested.connect(self._cancel_chat_ai)
             self.design_chat.save_project_memory_requested.connect(self._save_chat_project_memory)
             self.design_chat.save_naming_rule_requested.connect(self._save_chat_naming_rule)
+            self.design_chat.save_preference_requested.connect(self._save_chat_preference)
+            self.design_chat.manage_memory_requested.connect(self._manage_chat_memory)
+            self.design_chat.show_skill_requested.connect(self._show_design_skill)
+            self.design_chat.project_combo.currentIndexChanged.connect(self._chat_project_changed)
+            self.design_chat.auto_learning_changed.connect(self.repository.set_auto_habit_learning)
+        self.design_chat.auto_learning.blockSignals(True)
+        self.design_chat.auto_learning.setChecked(self.repository.auto_habit_learning_enabled())
+        self.design_chat.auto_learning.blockSignals(False)
         conversations = self.repository.list_conversations(self.current_project_id)
         conversation_ids = {item["conversation_id"] for item in conversations}
         if self.chat_conversation_id not in conversation_ids:
@@ -506,7 +625,7 @@ class ApplicationShell:
             current = {item["module_code"]: item for item in self.repository.list_modules(self.current_project_id, enabled_only=False)}
             choices = {}
             for item in selected:
-                code = str(item.get("module_code", "")).zfill(2)
+                code = normalize_module(item.get("module_code", ""))
                 existing = current.get(code)
                 if existing and existing.get("module_name") != item.get("module_name"):
                     dialog = QMessageBox(self.main_window)
@@ -606,62 +725,82 @@ class ApplicationShell:
     def _build_design_chat_messages(self, content: str, options: dict) -> tuple[list[dict], dict]:
         if self.chat_conversation_id is None:
             raise LookupError("当前没有AI会话。")
+        if len(content) > MAX_QUESTION_CHARS:
+            raise ValueError("本次问题超过12000字，请分段发送；原输入已保留。")
+        preference = explicit_preference(content)
+        if preference and len(preference) > MAX_MEMORY_CHARS:
+            raise ValueError("个人习惯最多2000字，请缩短后发送；原输入已保留。")
         context = self.repository.prepare_conversation_context(self.chat_conversation_id)
         project_id = options.get("project_id") or self.current_project_id
         module_code = options.get("module_code") or self.current_module_code
-        system_parts = [
-            "你是机械工程设计问答助手。严格区分已知事实、用户数据、AI假设、经验建议和待验证参数；缺少参数时主动提问，不编造尺寸、材料或安全系数。"
-        ]
-        stats = {
-            "history_messages": len(context["recent_messages"]),
-            "total_messages": context["total_message_count"],
-            "summary_loaded": context["summary_loaded"],
-            "project_loaded": False,
-            "history_projects": 0,
-            "naming_rules": 0,
-            "project_memories": 0,
-        }
-        memory_context = None
-        if options.get("use_project") or options.get("use_history"):
-            memory_context = self.memory.build_context(content, project_id, module_code)
-        if options.get("use_project") and memory_context and memory_context.current_project:
-            project = memory_context.current_project
-            system_parts.append(f"当前项目资料：{project['name']}（{project['code']}），{project.get('description', '')}")
-            if memory_context.current_parts:
-                system_parts.append("当前项目零件：" + "；".join(
-                    f"{item['module_code']}-{item['part_number']:03d} {item['part_name']}" for item in memory_context.current_parts
-                ))
+        system_parts = [DESIGN_CHAT_SKILL]
+        stats = {"history_messages": 0, "total_messages": context["total_message_count"],
+                 "summary_loaded": context["summary_loaded"], "project_loaded": False,
+                 "history_projects": 0, "naming_rules": 0, "project_memories": 0,
+                 "preferences": 0, "context_reduced": context["summary_loaded"], "context_chars": 0}
+
+        def reference(title, lines, budget):
+            if lines:
+                text = "\n".join(lines)
+                stats['context_reduced'] |= len(text) > budget
+                system_parts.append(title + "：\n" + excerpt(text, budget))
+
+        if options.get("use_preferences", True):
+            preferences = self.repository.list_design_preferences(content, limit=8)
+            values = [r["content"] for r in preferences]
+            if preference and preference not in values:
+                values.insert(0, preference)
+            reference("用户明确个人习惯（跨项目，本轮要求优先）", ["- " + v for v in values], 1500)
+            stats["preferences"] = len(values)
+        if options.get("use_project") and project_id is not None:
+            project = self.repository.get_project(project_id)
+            parts = self.repository.list_records(project_id, limit=40)
+            reference("当前项目资料", [f"{project.name}（{project.code}），{project.description}",
+                      "当前模块：" + module_code,
+                      *[f"- {p.display_name}" for p in parts if p.module_code == module_code and p.status == "used"]], 1500)
             stats["project_loaded"] = True
-        if options.get("use_history") and memory_context:
-            history = list(memory_context.similar_projects)
-            if history:
-                system_parts.append("历史相似项目：" + "；".join(f"{item['name']}（{item['code']}）" for item in history))
+        if options.get("use_history"):
+            projects = self.repository.list_projects(include_archived=self.memory.archived_reference_allowed())
+            history = sorted((p for p in projects if p.id != project_id and self.memory.project_reference_allowed(p.id)
+                              and relevance(content, p.name + ' ' + p.description) > 0),
+                             key=lambda p: relevance(content, p.name + ' ' + p.description), reverse=True)[:5]
+            reference("历史相似项目", [f"- {p.name}（{p.code}）" for p in history], 500)
             stats["history_projects"] = len(history)
         if options.get("use_naming"):
             rules = self.memory.rules()
-            if rules:
-                system_parts.append("命名规则：\n" + "\n".join(f"- {item['title']}：{item['content']}" for item in rules))
+            reference("命名规则", [f"- {r['title']}：{r['content']}" for r in rules], 1800)
+            feedback = [r for r in self.memory.feedback() if r['action'] in ('adopted', 'edited')
+                        and (not module_code or not r['module_code'] or r['module_code'] == module_code)
+                        and relevance(content, r['input_description'] + ' ' + r['final_name']) > 0][:5]
+            reference("用户采用的命名纠偏", [f"- {r['ai_name']} → {r['final_name']}" for r in feedback], 600)
             stats["naming_rules"] = len(rules)
-        if options.get("use_memory"):
-            references = self.repository.list_project_memories(project_id, module_code, content, limit=10)
-            if references:
-                system_parts.append("项目记忆：\n" + "\n".join(f"- {item['title']}：{item['content']}" for item in references))
+        if options.get("use_memory") and project_id is not None:
+            references = self.repository.list_project_memories(project_id, module_code, content, limit=6)
+            reference("用户确认的项目结论（仅本项目）", [f"- {r['title']}：{r['content']}" for r in references], 2000)
             stats["project_memories"] = len(references)
         messages = [{"role": "system", "content": "\n\n".join(system_parts)}]
         if context["summary"]:
-            messages.append({"role": "system", "content": "较早会话摘要：\n" + context["summary"]})
-        messages.extend(
-            {"role": item["role"], "content": item["content"]}
-            for item in context["recent_messages"] if item["role"] in {"user", "assistant", "system"}
-        )
+            messages.append({"role": "system", "content": "较早会话摘录（原文仍保存在本地，未载入部分不可猜测）：\n" + context["summary"]})
+        messages.extend({"role": r["role"], "content": r["content"]} for r in context["recent_messages"] if r["role"] in {"user", "assistant"})
         messages.append({"role": "user", "content": content})
+        messages, reduced = bound_messages(messages)
+        stats["history_messages"] = sum(m['role'] in ('user', 'assistant') for m in messages[1:-1])
+        stats["context_reduced"] |= reduced
+        stats["context_chars"] = sum(len(m['content']) for m in messages)
         return messages, stats
 
     def _send_design_chat(self, content: str, options: dict) -> None:
+        if len(content) > MAX_QUESTION_CHARS:
+            QMessageBox.warning(self.design_chat or self.main_window, "输入过长", "本次问题超过12000字，请分段发送；原输入已保留。")
+            return
         if self.chat_conversation_id is None:
             self._new_design_conversation()
         conversation_id = self.chat_conversation_id
-        messages, context_stats = self._build_design_chat_messages(content, options)
+        try:
+            messages, context_stats = self._build_design_chat_messages(content, options)
+        except (ValueError, LookupError) as error:
+            QMessageBox.warning(self.design_chat or self.main_window, "无法发送", str(error))
+            return
         project_id = options.get("project_id") or self.current_project_id
         model = options.get("model") or self.settings.model_name
         reasoning_level = {"低": "low", "高": "high", "极致": "max"}.get(options.get("reasoning_level"), "high")
@@ -669,7 +808,21 @@ class ApplicationShell:
             conversation_id, project_id=project_id, model=model,
             thinking_enabled=bool(options.get("thinking_enabled")), reasoning_level=reasoning_level,
         )
-        self.repository.add_ai_message(conversation_id, "user", content)
+        preference = explicit_preference(content)
+        message_id = self.repository.add_ai_message(conversation_id, "user", content, design_preference=preference)
+        learning = []
+        if options.get('auto_learning', True):
+            try:
+                learning = self.repository.learn_design_habits(message_id)
+            except Exception:
+                LOGGER.exception('设计习惯自动学习暂未保存')
+                learning = ['自动学习暂未保存，聊天仍可继续']
+        if learning:
+            messages[0]['content'] += '\n\n本轮软件记忆结果（本轮新习惯优先于旧自动习惯）：\n' + '\n'.join(learning)
+            messages, reduced = bound_messages(messages)
+            context_stats['context_reduced'] |= reduced
+            context_stats['context_chars'] = sum(len(m['content']) for m in messages)
+            context_stats['history_messages'] = sum(m['role'] in ('user', 'assistant') for m in messages[1:-1])
         if self.design_chat:
             self.design_chat.accept_submission(content)
             self.design_chat.set_conversations(self.repository.list_conversations(self.current_project_id), conversation_id)
@@ -678,7 +831,11 @@ class ApplicationShell:
                 f"会话摘要：{'已加载' if context_stats['summary_loaded'] else '未生成'}；"
                 f"当前项目资料：{'已加载' if context_stats['project_loaded'] else '未加载'}；"
                 f"历史项目：{context_stats['history_projects']} 个；命名记忆：{context_stats['naming_rules']} 条；"
-                f"项目记忆：{context_stats['project_memories']} 条"
+                f"项目记忆：{context_stats['project_memories']} 条；个人习惯：{context_stats['preferences']} 条；"
+                f"上下文：{context_stats['context_chars']}/24000字"
+                + ("（已压缩，原文保留）" if context_stats['context_reduced'] else "")
+                + ("；个人习惯已保存" if preference else "")
+                + ('；' + '；'.join(learning) if learning else '')
             )
             self.design_chat.set_busy(True)
             self.design_chat.set_status("正在读取当前会话历史……", model)
@@ -713,13 +870,67 @@ class ApplicationShell:
             self.design_chat.set_busy(False); self.design_chat.set_status("失败", self.design_chat.model_combo.currentText())
         self._finish_chat_ai(error, "失败")
 
+    def _chat_memory_target(self):
+        if self.design_chat:
+            return (self.design_chat.project_combo.currentData(), self.design_chat.module_combo.currentData() or "")
+        return self.current_project_id, self.current_module_code
+
+    def _chat_project_changed(self, _index) -> None:
+        if not self.design_chat:
+            return
+        project_id = self.design_chat.project_combo.currentData()
+        if project_id is not None:
+            selected = self.design_chat.module_combo.currentData() or self.current_module_code
+            self.design_chat.set_modules(self.repository.list_modules(project_id), selected)
+
+    def _chat_memory_edit(self, title: str, instruction: str, content: str):
+        value, accepted = QInputDialog.getMultiLineText(self.design_chat or self.main_window, title, instruction + "\n内容（最多2000字）：", content)
+        if not accepted:
+            return None
+        value = value.strip()
+        if not value or len(value) > MAX_MEMORY_CHARS:
+            QMessageBox.warning(self.design_chat or self.main_window, "无法保存", "请输入1至2000字的记忆内容。")
+            return None
+        return value
+
+    def _save_chat_preference(self, content: str) -> None:
+        value = self._chat_memory_edit("记住个人习惯", "只保存跨项目使用的表达和工作方法。项目尺寸、材料和选型请保存为项目结论。", content)
+        if value:
+            self.repository.save_design_preference(value)
+            self.design_chat.reference_label.setText("个人习惯已保存；以后问答可按需加载，可在“记忆 → 管理记忆”中修改或删除。")
+
     def _save_chat_project_memory(self, content: str) -> None:
-        if self.current_project_id:
-            self.repository.save_project_memory(self.current_project_id, "AI设计问答结论", content, self.current_module_code, confidence=80)
+        project_id, module = self._chat_memory_target()
+        if project_id is None:
+            QMessageBox.information(self.design_chat or self.main_window, "尚未选择项目", "请先选择结论所属项目。")
+            return
+        project = self.repository.get_project(project_id)
+        value = self._chat_memory_edit("保存项目结论", f"保存到：{project.name}（{project.code}），模块{module}。请确认采用的结论，标明待验证事项。", content)
+        if value:
+            self.repository.save_project_memory(project_id, "AI设计问答确认结论", value, module, confidence=100)
+            self.design_chat.reference_label.setText(f"项目结论已保存到 {project.code} / {module}，不会用于其他项目。")
 
     def _save_chat_naming_rule(self, content: str) -> None:
-        # Naming memory remains an explicit, separate user action.
-        self.memory.record_feedback(self.current_project_id, self.current_module_code, content, content, "adopted", "", "AI设计问答明确保存为命名规则")
+        project_id, module = self._chat_memory_target()
+        value = self._chat_memory_edit("保存命名偏好", "请确认希望沿用的命名称谓或规则；图号仍由本地程序分配。", content)
+        if value:
+            self.memory.record_feedback(project_id, module, value, value, "adopted", "", "AI设计问答明确保存为命名偏好")
+            self.design_chat.reference_label.setText("命名偏好已保存；相关命名问答将参考此记录。")
+
+    def _manage_chat_memory(self) -> None:
+        project_id, _ = self._chat_memory_target()
+        DesignMemoryDialog(self.repository, project_id, self.design_chat or self.main_window).exec()
+
+    def _show_design_skill(self) -> None:
+        dialog = QDialog(self.design_chat or self.main_window)
+        dialog.setWindowTitle("设计问答流程")
+        dialog.resize(680, 460)
+        layout = QVBoxLayout(dialog)
+        text = QTextEdit()
+        text.setReadOnly(True)
+        text.setPlainText(DESIGN_CHAT_SKILL)
+        layout.addWidget(text)
+        dialog.exec()
 
     def _select_project(self, project_id: int) -> None:
         if self.repository.get_project(project_id).project_status != "normal":
@@ -732,7 +943,7 @@ class ApplicationShell:
         if self.current_module_code not in enabled:
             self.current_module_code = enabled[0] if enabled else "03"
         selected = next((item for item in modules if item["module_code"] == self.current_module_code), None)
-        self.current_part_type = selected.get("last_part_type", self.current_part_type) if selected else self.current_part_type
+        self.current_part_type = SIMPLE_TYPE if getattr(self.main_window, "simple_mode", False) else (selected.get("last_part_type", self.current_part_type) if selected else self.current_part_type)
         self.refresh_all()
 
     def _select_module(self, module_code: str) -> None:
@@ -741,12 +952,12 @@ class ApplicationShell:
         codes = {item["module_code"] for item in self.repository.list_modules(self.current_project_id)}
         if module_code not in codes:
             return
-        self.current_module_code = str(module_code).zfill(2)
+        self.current_module_code = normalize_module(module_code)
         self.settings.current_module_code = self.current_module_code
         self.refresh_current(refresh_records=False)
 
     def _select_part_type(self, part_type: str) -> None:
-        if not part_type:
+        if not part_type or getattr(self.main_window, "simple_mode", False):
             return
         self.current_part_type = part_type
         self.settings.current_part_type = part_type
@@ -756,14 +967,16 @@ class ApplicationShell:
         self.refresh_current(refresh_records=False)
 
     def _new_project(self, prefill_code: str = "", description: str = "") -> None:
-        dialog = ProjectDialog(self.main_window)
+        dialog_class = SimpleProjectDialog if getattr(self.main_window, "simple_mode", False) else ProjectDialog
+        dialog = dialog_class(self.main_window)
         if prefill_code:
             dialog.code.setText(prefill_code)
         if description:
             dialog.description.setPlainText(description)
         while dialog.exec():
             try:
-                project = self.project_service.create(**dialog.values())
+                options = {"modules": [("DJ", "电机"), ("JJ", "机架"), ("SL", "送料")]} if getattr(self.main_window, "simple_mode", False) else {}
+                project = self.project_service.create(**dialog.values(), **options)
                 self.current_project_id = project.id
                 self.refresh_all()
                 self.main_window.show_page(1)
@@ -774,7 +987,8 @@ class ApplicationShell:
 
     def _edit_project(self, project_id: int) -> None:
         project = self.repository.get_project(project_id)
-        dialog = ProjectDialog(self.main_window, project)
+        dialog_class = SimpleProjectDialog if getattr(self.main_window, "simple_mode", False) else ProjectDialog
+        dialog = dialog_class(self.main_window, project)
         while dialog.exec():
             values = dialog.values()
             values.pop("start_number")
@@ -877,12 +1091,12 @@ class ApplicationShell:
         try:
             filename = self.workflow.copy_named_preview(
                 self.current_project_id, self.current_module_code, self.current_part_type,
-                source.part_name.text().strip(),
+                source.part_name.text().strip(), **self._sequence_options(),
             )
         except SingletonNumberExistsError as error:
             self._notify_singleton_exists(error)
             return
-        except ValueError as error:
+        except (ValueError, SolidWorksError) as error:
             QMessageBox.warning(source, "无法生成编号", str(error))
             return
         QApplication.clipboard().setText(filename)
@@ -917,7 +1131,7 @@ class ApplicationShell:
         try:
             record = self.workflow.save_named_and_advance(
                 self.current_project_id, self.current_module_code, self.current_part_type,
-                part_name, extra_notes or purpose, self.preview_copied,
+                part_name, extra_notes or purpose, self.preview_copied, **self._sequence_options(),
             )
         except SingletonNumberExistsError as error:
             LOGGER.info("单例编号已存在，拒绝重复创建：%s", error)
@@ -971,6 +1185,18 @@ class ApplicationShell:
             QMessageBox.warning(self._active_window(), "信息不完整", "请填写零件名称后再创建。")
             return
         project = self.repository.get_project(self.current_project_id)
+        try:
+            sequence_options = self._sequence_options()
+            if self.current_part_type == SIMPLE_TYPE:
+                from ..solidworks.validation import validate_part_name
+                validate_part_name(part_name)
+                self.workflow.preview_named(project.id, self.current_module_code, self.current_part_type, **sequence_options)
+        except (ValueError, LookupError, SolidWorksError) as error:
+            QMessageBox.warning(self._active_window(), "无法生成文件", str(error))
+            return
+        pending_inputs = {"project": project, "part_name": part_name, "extra_notes": extra_notes,
+                          "module_code": self.current_module_code, "part_type": self.current_part_type,
+                          **sequence_options}
         # 单例类别（总成）在启动 SOLIDWORKS 之前就给出明确提示，避免无谓的探测。
         try:
             self.repository.get_next_named_number(
@@ -983,7 +1209,7 @@ class ApplicationShell:
             pass
         if not project.solidworks_part_directory:
             self.solidworks_pending_kind = "awaiting_directory"
-            self.solidworks_pending = {"project": project, "part_name": part_name, "extra_notes": extra_notes}
+            self.solidworks_pending = pending_inputs
             dialog = QMessageBox(self._active_window())
             dialog.setWindowTitle("未设置SOLIDWORKS目录")
             dialog.setText(
@@ -1026,7 +1252,7 @@ class ApplicationShell:
                 QMessageBox.critical(self._active_window(), "目录创建失败", str(error))
                 return
         self.solidworks_pending_kind = "create_probe"
-        self.solidworks_pending = {"project": project, "part_name": part_name, "extra_notes": extra_notes}
+        self.solidworks_pending = pending_inputs
         self._start_solidworks_worker(OperationRequest(
             operation_id=f"probe-{uuid.uuid4()}", action="probe",
             fallback_template=self.settings.solidworks_fallback_template,
@@ -1045,7 +1271,7 @@ class ApplicationShell:
         pending = self.solidworks_pending
         if not pending or self.current_project_id is None:
             return
-        project = self.repository.get_project(self.current_project_id)
+        project = self.repository.get_project(pending["project"].id)
         self.solidworks_pending_kind = "create_probe"
         pending["project"] = project
         self.solidworks_pending = pending
@@ -1112,10 +1338,9 @@ class ApplicationShell:
         timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
         line = f"[{timestamp}] {message}"
         self.main_window.append_solidworks_log(line)
-        self.main_window.set_solidworks_status({
+        self._set_solidworks_status({
             "connected": "已连接", "template_resolved": "模板正常", "file_saved": "创建成功",
-        }.get(stage, "正在创建"))
-        self.mini_window.set_solidworks_status(self.main_window.solidworks_status.text().removeprefix("SW："))
+        }.get(stage, "正在检测" if self.solidworks_pending_kind.endswith("probe") else "正在创建"))
         LOGGER.info("SOLIDWORKS [%s] %s", stage, message)
 
     def _on_solidworks_completed(self, result: OperationResult) -> None:
@@ -1123,12 +1348,18 @@ class ApplicationShell:
         if kind == "create_probe":
             pending = self.solidworks_pending
             project = pending["project"]
+            module_code = pending.get("module_code", self.current_module_code)
+            part_type = pending.get("part_type", self.current_part_type)
+            sequence_options = {"sequence_override": pending["sequence_override"]} if "sequence_override" in pending else {}
             try:
-                preview_name = self.workflow.copy_named_preview(
-                    project.id, self.current_module_code, self.current_part_type, pending["part_name"]
-                )
+                if part_type == SIMPLE_TYPE:
+                    # reserve() performs the one authoritative directory scan and number check.
+                    preview_name = self.workflow.preview_named(project.id, module_code, part_type, **sequence_options) + '-' + pending["part_name"]
+                else:
+                    preview_name = self.workflow.copy_named_preview(project.id, module_code, part_type, pending["part_name"])
+
                 target = Path(project.solidworks_part_directory) / f"{preview_name}.SLDPRT"
-                if self.settings.solidworks_confirm_before_create:
+                if self.settings.solidworks_confirm_before_create and not getattr(self.main_window, "simple_mode", False):
                     text = (
                         "即将创建SOLIDWORKS零件\n\n"
                         f"当前项目：{project.name}\n模块：{self.current_module_code}\n"
@@ -1147,8 +1378,8 @@ class ApplicationShell:
                         self._set_solidworks_status("已取消")
                         return
                 reservation = self.solidworks_service.reserve(
-                    project.id, self.current_module_code, self.current_part_type, pending["part_name"],
-                    project.solidworks_part_directory,
+                    project.id, module_code, part_type, pending["part_name"],
+                    project.solidworks_part_directory, extra_notes=pending.get("extra_notes", ""), **sequence_options,
                 )
                 self.solidworks_pending_kind = "create"
                 self.solidworks_pending = {**pending, "reservation": reservation}
@@ -1255,11 +1486,11 @@ class ApplicationShell:
                 LOGGER.error("SOLIDWORKS失败状态转入本地恢复文件：%s", outcome.get("recovery_path"))
             elif outcome.get("recovery_required"):
                 status_note = "保留预留并待恢复"
-        self._set_solidworks_status("创建失败")
+        self._set_solidworks_status("操作失败")
         self.main_window.append_solidworks_log(f"失败：{error}")
         if status_note.startswith("数据库写入失败"):
             self.main_window.append_solidworks_log(status_note)
-        self.main_window.settings_page.set_solidworks_status(f"失败：{error}")
+        self.main_window.settings_page.sw_status.setToolTip(f"失败：{error}")
         QMessageBox.critical(
             self._active_window(), "SOLIDWORKS操作失败",
             f"原因：{error}\n\n阶段：{getattr(error, 'stage', 'worker')}\n"
@@ -1348,6 +1579,7 @@ class ApplicationShell:
     def _set_solidworks_status(self, text: str) -> None:
         self.main_window.set_solidworks_status(text)
         self.mini_window.set_solidworks_status(text)
+        self.main_window.settings_page.set_solidworks_status(text)
 
     def _record_action(self, action: str, record_id: int) -> None:
         try:
@@ -1362,6 +1594,12 @@ class ApplicationShell:
                      "copy_part": record.part_name}.get(action, record.display_name)
             QApplication.clipboard().setText(value)
             self.notify("已复制", value)
+            return
+        if action == "open_file":
+            if record.file_path:
+                result = open_local_path(Path(record.file_path), "file")
+                if not result.ok:
+                    show_local_path_error(self._active_window(), result)
             return
         if action == "open_directory":
             if record.file_path:
@@ -1404,7 +1642,7 @@ class ApplicationShell:
 
     def _open_record(self, record_id: int) -> None:
         record = self.repository.get_record(record_id)
-        dialog = RecordDetailDialog(record, self.main_window)
+        dialog = RecordDetailDialog(record, self.main_window, associated_files=self.repository.list_record_files(record_id))
         if not dialog.exec():
             return
         try:
@@ -1423,6 +1661,8 @@ class ApplicationShell:
 
     def _search_records(self, query: str, date_from: str, date_to: str, current_only: bool) -> None:
         project_id = self.current_project_id if current_only else self.main_window.history_project.currentData()
+        if current_only and getattr(self.main_window, "simple_mode", False) and self.main_window.search_scope.currentIndex() == 1:
+            project_id = None
         records = self.repository.list_records(project_id, query, date_from, date_to)
         if current_only:
             self._current_records_cache = records

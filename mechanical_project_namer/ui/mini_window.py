@@ -5,7 +5,7 @@ from PyQt6.QtCore import QEvent, Qt, pyqtSignal
 from PyQt6.QtGui import QCloseEvent, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QPushButton, QMenu,
-    QTextEdit, QVBoxLayout, QWidget,
+    QTextEdit, QVBoxLayout, QWidget, QSizePolicy,
 )
 
 from ..projects.models import DrawingRecord, Project
@@ -33,7 +33,8 @@ class MiniWindow(QWidget):
         self.setMaximumWidth(520)
         self.setObjectName("miniWindow")
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setContentsMargins(14, 10, 14, 10)
+        layout.setSpacing(4)
         header = QHBoxLayout()
         label = QLabel("快速图号")
         label.setObjectName("miniTitle")
@@ -46,10 +47,13 @@ class MiniWindow(QWidget):
         layout.addLayout(header)
         self.project_name = QLabel("尚未选择项目")
         self.project_name.setObjectName("miniProject")
+        self.project_name.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.project_code = QLabel("—")
         self.project_code.setObjectName("mutedText")
-        layout.addWidget(self.project_name)
-        layout.addWidget(self.project_code)
+        project_row = QHBoxLayout()
+        project_row.addWidget(self.project_name, 1)
+        project_row.addWidget(self.project_code)
+        layout.addLayout(project_row)
         module_row = QHBoxLayout()
         module_label = QLabel("模块")
         module_label.setProperty("fieldLabel", "true")
@@ -97,9 +101,11 @@ class MiniWindow(QWidget):
         buttons = QHBoxLayout()
         self.copy_button = QPushButton("仅复制")
         self.copy_button.setProperty("kind", "ghost")
+        self.copy_button.setToolTip("复制当前名称，不保存记录、不推进编号。")
         self.copy_button.clicked.connect(self.copy_requested)
         self.save_button = QPushButton("保存并复制")
         self.save_button.setProperty("kind", "secondary")
+        self.save_button.setToolTip("保存命名记录并复制名称；不创建实际设计文件。")
         self.save_button.clicked.connect(self._save)
         self.solidworks_button = QPushButton("创建SW零件")
         self.solidworks_button.setProperty("kind", "primary")
@@ -115,11 +121,14 @@ class MiniWindow(QWidget):
         self.solidworks_directory_button.setProperty("kind", "ghost")
         self.solidworks_directory_button.clicked.connect(self.solidworks_directory_requested)
         status_row.addWidget(self.solidworks_directory_button); layout.addLayout(status_row)
+        self.directory_status = QLabel("保存目录：未设置")
+        self.directory_status.setObjectName("mutedText")
+        layout.addWidget(self.directory_status)
         self.recent_title = QLabel("最近记录（双击复制完整名称）")
         self.recent_title.setObjectName("mutedText")
         layout.addWidget(self.recent_title)
         self.recent = QListWidget()
-        self.recent.setMinimumHeight(90)
+        self.recent.setMinimumHeight(60)
         self.recent.setToolTip("双击整行复制完整名称；右键可复制不同字段")
         self.recent.itemDoubleClicked.connect(self._recent_double_click)
         self.recent.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -155,12 +164,17 @@ class MiniWindow(QWidget):
             self.project_name.setText("尚未选择项目")
             self.project_code.setText("—")
             self.preview.setText("请先创建或选择项目")
+            self.directory_status.setText("保存目录：未设置")
+            self.directory_status.setToolTip("")
+            self.solidworks_directory_button.setText("设置目录")
             return
         self.project_name.setText(project.name)
+        self.project_name.setToolTip(project.name)
         self.project_code.setText(f"项目代号  {project.code}")
         configured = bool(project.solidworks_part_directory)
-        self.solidworks_status.setText("SW：已设置" if configured else "SW：未设置")
-        self.solidworks_directory_button.setText("修改" if configured else "设置")
+        self.directory_status.setText("保存目录：已设置" if configured else "保存目录：未设置")
+        self.directory_status.setToolTip(project.solidworks_part_directory or "")
+        self.solidworks_directory_button.setText("修改目录" if configured else "设置目录")
         self.preview.setText(preview or project.next_filename)
         self.module_combo.blockSignals(True)
         index = self.module_combo.findData(selected_module)
@@ -204,8 +218,6 @@ class MiniWindow(QWidget):
 
     def set_solidworks_busy(self, busy: bool) -> None:
         self.solidworks_button.setDisabled(busy)
-        if busy:
-            self.solidworks_status.setText("SW：正在创建")
 
     def set_solidworks_status(self, text: str) -> None:
         self.solidworks_status.setText(f"SW：{text}")

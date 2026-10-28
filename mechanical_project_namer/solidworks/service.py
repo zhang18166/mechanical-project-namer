@@ -4,6 +4,7 @@
 import json
 import logging
 import sqlite3
+from ..numbering.simple import SIMPLE_TYPE, module_code as normalize_module, choose_sequence, full_name as simple_full_name
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -49,9 +50,11 @@ class SolidWorksService:
 
     def reserve(
         self, project_id: int, module_code: str, part_type: str, part_name: str,
-        target_directory: str, operation_id: str | None = None,
+        target_directory: str, operation_id: str | None = None, *, extra_notes: str = "", sequence_override=None,
     ) -> dict:
-        module_code = str(module_code).zfill(2)
+        from ..file_sync import ensure_external_numbers_registered
+        ensure_external_numbers_registered(self.repository, project_id, extras=(target_directory,))
+        module_code = normalize_module(module_code)
         validate_part_name(part_name)
         operation_id = operation_id or str(uuid.uuid4())
         start, end = part_type_range(part_type)
@@ -67,7 +70,9 @@ class SolidWorksService:
             ).fetchone()
             if module is None:
                 raise SolidWorksError("module_unavailable", f"模块 {module_code} 尚未启用。", "reservation")
-            if singleton:
+            if part_type == SIMPLE_TYPE:
+                sequence = choose_sequence(connection, project_id, module_code, sequence_override)
+            elif singleton:
                 # 总成：固定 000，每模块仅一个，不读取也不推进递增计数器。
                 # 该分支不再可能抛出 "序号已用尽"。
                 existing = connection.execute(
@@ -110,7 +115,7 @@ class SolidWorksService:
                     sequence = int(row["next_sequence"])
                 if sequence > end:
                     raise SolidWorksError("number_exhausted", f"模块 {module_code} 的{part_type}序号已用尽。", "reservation")
-            full_name = compose_full_name(project["code"], module_code, sequence, part_name)
+            full_name = (simple_full_name if part_type == SIMPLE_TYPE else compose_full_name)(project["code"], module_code, sequence, part_name)
             target_path = validate_target_path(str(Path(target_directory) / f"{full_name}.SLDPRT"))
             duplicate = connection.execute(
                 "SELECT 1 FROM drawing_records WHERE project_id=? AND module_code=? AND part_type=? AND part_sequence=?",
@@ -122,9 +127,9 @@ class SolidWorksService:
                 connection.execute(
                     """INSERT INTO solidworks_operations
                     (operation_id,project_id,module_code,part_type,part_sequence,part_name,full_name,target_path,
-                     status,started_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                     status,started_at,updated_at,extra_notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (operation_id, project_id, module_code, part_type, sequence, part_name, full_name,
-                     str(target_path), "reserved", now, now),
+                     str(target_path), "reserved", now, now, extra_notes),
                 )
             except sqlite3.IntegrityError as error:
                 raise SolidWorksError("number_reserved", f"编号 {project['code']}-{module_code}-{sequence:03d} 正在被另一任务使用。", "reservation") from error
@@ -218,7 +223,7 @@ class SolidWorksService:
                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (project["id"], project["name"], project["code"], drawing_number,
                  f"{project['code']}-{operation['module_code']}-{sequence:03d}", operation["part_name"], "",
-                 now[:10], now, now, "used", int(is_copied), "solidworks_one_click", project["directory"], "",
+                 now[:10], now, now, "used", int(is_copied), "solidworks_one_click", project["directory"], operation["extra_notes"],
                  operation["module_code"], sequence, operation["part_type"], operation["full_name"],
                  str(target), relative_path, target.suffix.upper(), result.file_size, 1, "solidworks_one_click",
                  str(result.info.year or result.info.revision), result.info.service_pack, result.template_path, operation_id),
@@ -227,7 +232,7 @@ class SolidWorksService:
                 connection.execute(
                     """INSERT INTO part_sequence_counters(project_id,module_code,part_type,next_sequence,updated_at)
                     VALUES (?,?,?,?,?) ON CONFLICT(project_id,module_code,part_type)
-                    DO UPDATE SET next_sequence=excluded.next_sequence,updated_at=excluded.updated_at""",
+                    DO UPDATE SET next_sequence=MAX(part_sequence_counters.next_sequence,excluded.next_sequence),updated_at=excluded.updated_at""",
                     (project["id"], operation["module_code"], operation["part_type"], sequence + 1, now),
                 )
             connection.execute(

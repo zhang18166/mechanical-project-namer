@@ -7,6 +7,7 @@ from pathlib import Path
 
 from ..paths import database_path
 
+SCHEMA_VERSION = 11
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_meta (
@@ -56,7 +57,7 @@ CREATE TABLE IF NOT EXISTS drawing_records (
     project_id INTEGER NOT NULL REFERENCES projects(id),
     project_name TEXT NOT NULL,
     project_code TEXT NOT NULL,
-    drawing_number INTEGER NOT NULL CHECK(drawing_number BETWEEN 1 AND 999),
+    drawing_number INTEGER NOT NULL CHECK(drawing_number >= 1 AND (part_type = '通用编号' OR drawing_number <= 999)),
     filename TEXT NOT NULL COLLATE NOCASE UNIQUE,
     part_name TEXT NOT NULL DEFAULT '',
     purpose TEXT NOT NULL DEFAULT '',
@@ -88,6 +89,14 @@ CREATE TABLE IF NOT EXISTS drawing_records (
 
 CREATE INDEX IF NOT EXISTS idx_records_project ON drawing_records(project_id, drawing_number DESC);
 CREATE INDEX IF NOT EXISTS idx_records_date ON drawing_records(record_date);
+CREATE TABLE IF NOT EXISTS record_files (
+    file_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    record_id INTEGER NOT NULL REFERENCES drawing_records(id) ON DELETE CASCADE,
+    path TEXT NOT NULL COLLATE NOCASE UNIQUE,
+    extension TEXT NOT NULL, file_size INTEGER NOT NULL DEFAULT 0,
+    mtime_ns INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_record_files_record ON record_files(record_id);
 CREATE INDEX IF NOT EXISTS idx_projects_last_used ON projects(archived, last_used_at DESC);
 CREATE TABLE IF NOT EXISTS project_modules (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -146,6 +155,15 @@ CREATE TABLE IF NOT EXISTS project_memories (
     created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_project_memories_project ON project_memories(project_id, module_code, enabled);
+
+CREATE TABLE IF NOT EXISTS design_preferences (
+    preference_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    content TEXT NOT NULL UNIQUE,
+    source_message_id INTEGER REFERENCES ai_messages(message_id) ON DELETE SET NULL,
+    habit_key TEXT NOT NULL DEFAULT '', source TEXT NOT NULL DEFAULT 'manual',
+    evidence_count INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
 
 -- Monotonic counters reserve numbers even when a record is deleted.
 CREATE TABLE IF NOT EXISTS part_sequence_counters (
@@ -350,10 +368,14 @@ class Database:
             connection.execute("PRAGMA journal_mode=WAL")
             connection.execute("PRAGMA synchronous=NORMAL")
             connection.executescript(SCHEMA)
+            preference_columns = {r['name'] for r in connection.execute('PRAGMA table_info(design_preferences)')}
+            for name, definition in (('habit_key', "TEXT NOT NULL DEFAULT ''"), ('source', "TEXT NOT NULL DEFAULT 'manual'"), ('evidence_count', 'INTEGER NOT NULL DEFAULT 1')):
+                if name not in preference_columns:
+                    connection.execute(f'ALTER TABLE design_preferences ADD COLUMN {name} {definition}')
             row = connection.execute("SELECT version FROM schema_meta LIMIT 1").fetchone()
             if row is None:
                 connection.execute("INSERT INTO schema_meta(version) VALUES (1)")
-            connection.execute("UPDATE schema_meta SET version=MAX(version, 7)")
+            connection.execute("UPDATE schema_meta SET version=MAX(version, ?)", (SCHEMA_VERSION,))
             now = __import__("datetime").datetime.now().astimezone().isoformat(timespec="seconds")
             for rule_key, title, content, priority in DEFAULT_AI_RULES:
                 connection.execute(
@@ -379,6 +401,9 @@ class Database:
             if "summary_through_message_id" not in conversation_columns:
                 connection.execute("ALTER TABLE ai_conversations ADD COLUMN summary_through_message_id INTEGER NOT NULL DEFAULT 0")
             connection.execute("UPDATE ai_feedback SET source_project_id=project_id WHERE source_project_id IS NULL AND project_id IS NOT NULL")
+            operation_columns = {row["name"] for row in connection.execute("PRAGMA table_info(solidworks_operations)").fetchall()}
+            if "extra_notes" not in operation_columns:
+                connection.execute("ALTER TABLE solidworks_operations ADD COLUMN extra_notes TEXT NOT NULL DEFAULT ''")
             record_columns = {row["name"] for row in connection.execute("PRAGMA table_info(drawing_records)").fetchall()}
             for name, definition in (("module_code", "TEXT NOT NULL DEFAULT '00'"), ("part_sequence", "INTEGER NOT NULL DEFAULT 0"), ("part_type", "TEXT NOT NULL DEFAULT 'legacy'"), ("full_name", "TEXT NOT NULL DEFAULT ''")):
                 if name not in record_columns:
@@ -430,6 +455,8 @@ class Database:
             module_defaults = (("00", "整机总装"), ("01", "机架模块"), ("02", "送料模块"), ("03", "压弧/成型模块"), ("04", "锯切模块"), ("05", "导料/托料模块"), ("06", "气动模块"), ("07", "电气模块"), ("08", "防护模块"), ("90", "标准件/通用件"), ("99", "工程图、BOM、资料"))
             project_ids = [row["id"] for row in connection.execute("SELECT id FROM projects").fetchall()]
             for project_id in project_ids:
+                if connection.execute("SELECT 1 FROM project_modules WHERE project_id=? LIMIT 1", (project_id,)).fetchone():
+                    continue
                 for sort_order, (module_code, module_name) in enumerate(module_defaults):
                     connection.execute(
                         "INSERT OR IGNORE INTO project_modules(project_id,module_code,module_name,enabled,sort_order,source,last_part_type,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
@@ -453,6 +480,39 @@ class Database:
                        next_sequence=MAX(part_sequence_counters.next_sequence, excluded.next_sequence), updated_at=excluded.updated_at""",
                     (row["project_id"], row["module_code"], row["part_type"], next_sequence, now),
                 )
+        self._upgrade_record_identity_limit()
+
+    def _upgrade_record_identity_limit(self):
+        """The old internal row ordinal must not cap simple naming across modules."""
+        with self.connect() as connection:
+            definition = connection.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='drawing_records'").fetchone()[0]
+            old = 'CHECK(drawing_number BETWEEN 1 AND 999)'
+            if old not in definition:
+                return
+            definition = definition.replace('CREATE TABLE drawing_records', 'CREATE TABLE drawing_records_v11', 1).replace(
+                old, "CHECK(drawing_number >= 1 AND (part_type = '通用编号' OR drawing_number <= 999))")
+            indexes = [r[0] for r in connection.execute("SELECT sql FROM sqlite_master WHERE tbl_name='drawing_records' AND type IN ('index','trigger') AND sql IS NOT NULL")]
+            columns = ','.join('"' + r['name'] + '"' for r in connection.execute('PRAGMA table_info(drawing_records)'))
+            sequence = connection.execute("SELECT seq FROM sqlite_sequence WHERE name='drawing_records'").fetchone()
+            connection.execute('PRAGMA foreign_keys=OFF')
+            connection.execute('BEGIN IMMEDIATE')
+            try:
+                connection.execute(definition)
+                connection.execute(f'INSERT INTO drawing_records_v11 ({columns}) SELECT {columns} FROM drawing_records')
+                connection.execute('DROP TABLE drawing_records')
+                connection.execute('ALTER TABLE drawing_records_v11 RENAME TO drawing_records')
+                for sql in indexes:
+                    connection.execute(sql)
+                if sequence:
+                    connection.execute("UPDATE sqlite_sequence SET seq=MAX(seq,?) WHERE name='drawing_records'", (sequence[0],))
+                if connection.execute('PRAGMA foreign_key_check').fetchone():
+                    raise sqlite3.IntegrityError('记录迁移后关联检查失败，已回滚。')
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+            finally:
+                connection.execute('PRAGMA foreign_keys=ON')
 
     @staticmethod
     def _repair_singleton_numbering(connection) -> None:
@@ -517,16 +577,16 @@ class Database:
         if not self.path.exists():
             return
         try:
-            with sqlite3.connect(self.path) as connection:
+            with sqlite3.connect(self.path, factory=ClosingConnection) as connection:
                 row = connection.execute("SELECT version FROM schema_meta LIMIT 1").fetchone()
                 version = int(row[0]) if row else 0
-            if version >= 7:
+            if version >= SCHEMA_VERSION:
                 return
         except sqlite3.DatabaseError:
             return
         target_dir = self.path.parent / "backups" / "database"
         target_dir.mkdir(parents=True, exist_ok=True)
-        target = target_dir / f"{self.path.stem}_pre_schema7_{__import__('datetime').datetime.now():%Y%m%d_%H%M%S_%f}.db"
+        target = target_dir / f"{self.path.stem}_pre_schema{SCHEMA_VERSION}_{__import__('datetime').datetime.now():%Y%m%d_%H%M%S_%f}.db"
         source = sqlite3.connect(self.path); destination = sqlite3.connect(target)
         try:
             source.backup(destination)

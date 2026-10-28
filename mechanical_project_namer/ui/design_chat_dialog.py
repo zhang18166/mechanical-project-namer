@@ -5,8 +5,9 @@ from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QCloseEvent, QInputMethodEvent, QKeyEvent
 from PyQt6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
-    QPlainTextEdit, QPushButton, QSplitter, QTextEdit, QVBoxLayout, QWidget,
+    QPlainTextEdit, QPushButton, QSplitter, QTextEdit, QVBoxLayout, QWidget, QMenu,
 )
+from .common import FlowLayout
 
 import html as _html
 
@@ -20,6 +21,10 @@ class AIChatInputEdit(QPlainTextEdit):
         self._ime_composing = False
         self._ime_commit_guard = False
         self._submission_enabled = True
+        self._ime_guard_timer = QTimer(self)
+        self._ime_guard_timer.setSingleShot(True)
+        self._ime_guard_timer.setInterval(250)
+        self._ime_guard_timer.timeout.connect(self._clear_ime_commit_guard)
 
     def set_submission_enabled(self, enabled: bool) -> None:
         self._submission_enabled = enabled
@@ -28,21 +33,30 @@ class AIChatInputEdit(QPlainTextEdit):
         was_composing = self._ime_composing
         super().inputMethodEvent(event)
         self._ime_composing = bool(event.preeditString())
-        if not self._ime_composing and (was_composing or bool(event.commitString())):
+        # A direct commit is already finished text, not an Enter confirmation.
+        # Only protect the key that ends a visible composition.
+        if not self._ime_composing and was_composing:
             self._ime_commit_guard = True
-            QTimer.singleShot(250, self._clear_ime_commit_guard)
+            self._ime_guard_timer.start()
+        elif not self._ime_composing:
+            self._clear_ime_commit_guard()
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if event.key() not in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            self._clear_ime_commit_guard()
             super().keyPressEvent(event)
+            return
+        if event.isAutoRepeat() or self._ime_composing:
+            event.accept()
             return
         modifiers = event.modifiers()
         if modifiers & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier):
             self.insertPlainText("\n")
             event.accept()
             return
-        if self._ime_composing or self._ime_commit_guard:
-            super().keyPressEvent(event)
+        if self._ime_commit_guard:
+            # Consume candidate confirmation; never turn it into a blank line.
+            event.accept()
             return
         if modifiers & Qt.KeyboardModifier.AltModifier:
             super().keyPressEvent(event)
@@ -51,8 +65,19 @@ class AIChatInputEdit(QPlainTextEdit):
             self.submit_requested.emit()
         event.accept()
 
+    def keyReleaseEvent(self, event: QKeyEvent) -> None:
+        if not self._ime_composing:
+            self._clear_ime_commit_guard()
+        super().keyReleaseEvent(event)
+
+    def focusOutEvent(self, event) -> None:
+        super().focusOutEvent(event)
+        self._ime_composing = False
+        self._clear_ime_commit_guard()
+
     def _clear_ime_commit_guard(self) -> None:
         self._ime_commit_guard = False
+        self._ime_guard_timer.stop()
 
 
 class DesignChatDialog(QDialog):
@@ -65,12 +90,17 @@ class DesignChatDialog(QDialog):
     delete_requested = pyqtSignal(int)
     save_project_memory_requested = pyqtSignal(str)
     save_naming_rule_requested = pyqtSignal(str)
+    save_preference_requested = pyqtSignal(str)
+    manage_memory_requested = pyqtSignal()
+    show_skill_requested = pyqtSignal()
+    auto_learning_changed = pyqtSignal(bool)
 
     def __init__(self, conversations=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("AI设计问答")
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
         self.resize(980, 680)
+        self._messages = []
         root = QHBoxLayout(self)
         splitter = QSplitter(Qt.Orientation.Horizontal)
         left = QWidget(); left_layout = QVBoxLayout(left)
@@ -93,9 +123,16 @@ class DesignChatDialog(QDialog):
         self.thinking = QCheckBox("深度思考"); self.reasoning = QComboBox(); self.reasoning.addItems(["低", "高", "极致"]); self.reasoning.setCurrentText("高")
         for widget in (self.project_combo, self.module_combo, self.model_combo, self.thinking, self.reasoning): context.addWidget(widget)
         layout.addLayout(context)
-        refs = QHBoxLayout()
+        refs = FlowLayout(spacing=8)
         self.use_project = QCheckBox("当前项目资料"); self.use_history = QCheckBox("历史项目"); self.use_naming = QCheckBox("命名记忆"); self.use_memory = QCheckBox("项目记忆")
-        for check in (self.use_project, self.use_history, self.use_naming, self.use_memory): check.setChecked(True); refs.addWidget(check)
+        self.use_preferences = QCheckBox("个人习惯")
+        self.auto_learning = QCheckBox("自动学习")
+        self.auto_learning.setToolTip("明确表达的通用回答偏好直接保存；普通反馈重复出现才保存。不会自动保存工程尺寸或选型。")
+        self.auto_learning.setChecked(True)
+        self.auto_learning.toggled.connect(self.auto_learning_changed)
+        self.use_preferences.setToolTip("加载已明确保存的通用表达和工作习惯；不把项目尺寸当成全局习惯。")
+        for check in (self.use_project, self.use_history, self.use_naming, self.use_memory, self.use_preferences): check.setChecked(True); refs.addWidget(check)
+        refs.addWidget(self.auto_learning)
         layout.addLayout(refs)
         self.transcript = QTextEdit()
         self.transcript.setReadOnly(True)
@@ -106,13 +143,26 @@ class DesignChatDialog(QDialog):
         self.status_label.setObjectName("mutedText")
         layout.addWidget(self.status_label)
         self.input = AIChatInputEdit(); self.input.setPlaceholderText("描述设计问题、约束条件或要比较的方案…"); self.input.setMaximumHeight(120); self.input.submit_requested.connect(self._send); layout.addWidget(self.input)
-        input_hint = QLabel("Enter发送 · Ctrl+Enter换行")
+        input_hint = QLabel("Enter发送 · Ctrl+Enter换行 · 自动学习通用偏好，可在“记忆”中修改")
+        input_hint.setWordWrap(True)
         input_hint.setObjectName("mutedText")
         layout.addWidget(input_hint)
         footer = QHBoxLayout()
         self.send_button = QPushButton("发送"); self.send_button.setProperty("kind", "primary"); self.send_button.clicked.connect(self._send)
         self.stop_button = QPushButton("停止生成"); self.stop_button.setProperty("kind", "secondary"); self.stop_button.setEnabled(False); self.stop_button.clicked.connect(self.cancel_requested)
-        footer.addWidget(self.send_button); footer.addWidget(self.stop_button); footer.addStretch(); layout.addLayout(footer)
+        self.memory_button = QPushButton("记忆")
+        self.memory_button.setProperty("kind", "secondary")
+        self.memory_menu = QMenu(self.memory_button)
+        for title, callback in (
+            ("记住个人习惯…", lambda: self.save_preference_requested.emit(self._memory_seed("user"))),
+            ("保存项目结论…", lambda: self.save_project_memory_requested.emit(self._memory_seed("assistant"))),
+            ("保存命名偏好…", lambda: self.save_naming_rule_requested.emit(self._memory_seed("assistant"))),
+            ("管理记忆…", self.manage_memory_requested.emit),
+            ("查看设计问答流程", self.show_skill_requested.emit),
+        ):
+            self.memory_menu.addAction(title, callback)
+        self.memory_button.setMenu(self.memory_menu)
+        footer.addWidget(self.send_button); footer.addWidget(self.stop_button); footer.addStretch(); footer.addWidget(self.memory_button); layout.addLayout(footer)
         splitter.addWidget(right); splitter.setSizes([220, 740]); root.addWidget(splitter)
 
     def set_conversations(self, conversations, current_id=None):
@@ -166,6 +216,7 @@ class DesignChatDialog(QDialog):
         if index >= 0: self.model_combo.setCurrentIndex(index)
 
     def append_message(self, role: str, content: str):
+        self._messages.append({"role": role, "content": content})
         # HTML message card: user / assistant / system(None). Engineering-tool style.
         who = {"user": "你", "assistant": "AI", "system": "系统"}.get(role, "系统")
         body = _html.escape(str(content or "")).replace("\n", "<br/>")
@@ -186,6 +237,7 @@ class DesignChatDialog(QDialog):
         vbar.setValue(vbar.maximum())
 
     def set_messages(self, messages):
+        self._messages = []
         self.transcript.clear()
         for item in messages or []:
             if item.get("role") in {"user", "assistant"}:
@@ -196,12 +248,19 @@ class DesignChatDialog(QDialog):
 
     def set_busy(self, busy: bool):
         self.send_button.setDisabled(busy); self.stop_button.setEnabled(busy); self.input.set_submission_enabled(not busy)
+        self.memory_button.setDisabled(busy)
+
+    def _memory_seed(self, role: str) -> str:
+        selected = self.transcript.textCursor().selectedText().replace("\u2029", "\n").strip()
+        if selected:
+            return selected
+        return next((m["content"] for m in reversed(self._messages) if m["role"] == role), "")
 
     def _send(self):
         if not self.send_button.isEnabled(): return
         content = self.input.toPlainText().strip()
         if not content: return
-        self.send_requested.emit(content, {"project_id": self.project_combo.currentData(), "module_code": self.module_combo.currentData() or "", "model": self.model_combo.currentText(), "thinking_enabled": self.thinking.isChecked(), "reasoning_level": self.reasoning.currentText(), "use_project": self.use_project.isChecked(), "use_history": self.use_history.isChecked(), "use_naming": self.use_naming.isChecked(), "use_memory": self.use_memory.isChecked()})
+        self.send_requested.emit(content, {"project_id": self.project_combo.currentData(), "module_code": self.module_combo.currentData() or "", "model": self.model_combo.currentText(), "thinking_enabled": self.thinking.isChecked(), "reasoning_level": self.reasoning.currentText(), "use_project": self.use_project.isChecked(), "use_history": self.use_history.isChecked(), "use_naming": self.use_naming.isChecked(), "use_memory": self.use_memory.isChecked(), "use_preferences": self.use_preferences.isChecked(), "auto_learning": self.auto_learning.isChecked()})
 
     def accept_submission(self, content: str) -> None:
         self.input.clear()

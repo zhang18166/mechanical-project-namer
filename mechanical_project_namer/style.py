@@ -136,6 +136,11 @@ QPushButton[kind="danger"] { background: #fbeae8; color: #a32d25; border: 1px so
 QPushButton[kind="danger"]:hover { background: #f6dbd8; }
 
 QPushButton[kind="sidebar"] { background: #dbe7ea; color: #163f50; border: 1px solid #dbe7ea; }
+QPushButton[compact="true"] { min-height: 28px; padding: 0 9px; }
+QWidget#miniWindow QLineEdit, QWidget#miniWindow QComboBox {
+    min-height: 18px; padding: 4px 8px;
+}
+QWidget#miniWindow QPushButton { min-height: 28px; padding: 0 9px; }
 
 /* ---------- 表格 / 列表 ---------- */
 QTableWidget, QListWidget {
@@ -215,4 +220,16 @@ QLabel[statusBadge="ok"]      { background: #e5f3ea; color: #2f9e5f; border-radi
 QLabel[statusBadge="reserved"]{ background: #fff4df; color: #c7860a; border-radius: 9999px; padding: 1px 10px; font-size: 11px; }
 QLabel[statusBadge="void"]    { background: #fbeae8; color: #a32d25; border-radius: 9999px; padding: 1px 10px; font-size: 11px; }
 QLabel[statusBadge="neutral"] { background: #eef1f2; color: #6a7c85; border-radius: 9999px; padding: 1px 10px; font-size: 11px; }
+"""
+
+APP_STYLE += """
+QFrame#namingPreview { background: #e7f1f4; border: 1px solid #cbdde3; border-radius: 8px; }
+QFrame#namingPreview QLabel { background: transparent; border: none; }
+QLabel#simpleFilename { color: #145b70; font-size: 23px; font-weight: 600; padding: 6px 0; }
+"""
+
+APP_STYLE += """
+QTableWidget#simpleRecords::item { padding: 4px; }
+QPushButton[record_action="true"] { min-height: 24px; padding: 0 3px; }
+QPushButton[record_action="true"]:disabled { color: #a9b4b9; background: transparent; border: none; }
 """

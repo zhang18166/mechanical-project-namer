@@ -308,6 +308,7 @@ class AIClient:
                         json_mode: bool = True, thinking_enabled: bool | None = None):
         if cancel_event and cancel_event.is_set():
             raise AICancelled()
+        request_thinking = self.thinking_enabled if thinking_enabled is None else thinking_enabled
         started = time.perf_counter()
         first_response = 0.0
         first_text = 0.0
@@ -328,7 +329,7 @@ class AIClient:
             return {
                 "model": actual_model or self.model_name,
                 "reasoning_level": self.reasoning_level,
-                "thinking_enabled": self.thinking_enabled,
+                "thinking_enabled": request_thinking,
                 "prompt_tokens": prompt,
                 "completion_tokens": int(usage.get("completion_tokens", 0) or 0),
                 "cached_tokens": cached,
@@ -353,9 +354,9 @@ class AIClient:
         }
         if json_mode:
             payload["response_format"] = {"type": "json_object"}
-        request_thinking = self.thinking_enabled if thinking_enabled is None else thinking_enabled
+        # DeepSeek defaults to thinking when the toggle is omitted.
+        payload["thinking"] = {"type": "enabled" if request_thinking else "disabled"}
         if request_thinking:
-            payload["thinking"] = {"type": "enabled"}
             payload["reasoning_effort"] = self.reasoning_level
         client = self._client(self.generation_timeout)
         owned = client is not self.http_client

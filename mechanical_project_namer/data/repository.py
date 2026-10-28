@@ -5,6 +5,7 @@ import json
 import os
 import re
 import sqlite3
+from ..numbering.simple import SIMPLE_TYPE, module_code as normalize_module, validate_module, choose_sequence, full_name as simple_full_name
 import socket
 from datetime import date, datetime
 from pathlib import Path
@@ -36,7 +37,7 @@ class SingletonNumberExistsError(ValueError):
     def __init__(self, part_type: str, module_code: str = "", project_code: str = "",
                  existing_full_name: str = "", existing_record_id: int | None = None) -> None:
         self.part_type = part_type
-        self.module_code = str(module_code or "").zfill(2) if module_code else ""
+        self.module_code = normalize_module(module_code) if module_code else ""
         self.project_code = project_code
         self.existing_full_name = existing_full_name
         self.existing_record_id = existing_record_id
@@ -66,6 +67,7 @@ class Repository:
         solidworks_part_directory: str = "",
         start_number: int = 1,
         project_type: str = "formal",
+        modules: list[tuple[str, str]] | None = None,
     ) -> Project:
         now = _now()
         with self.database.transaction() as connection:
@@ -79,7 +81,7 @@ class Repository:
             )
             project_id = int(cursor.lastrowid)
             from ..numbering.v12 import MODULES
-            for sort_order, (module_code, module_name) in enumerate(MODULES):
+            for sort_order, (module_code, module_name) in enumerate(MODULES if modules is None else modules):
                 connection.execute(
                     "INSERT INTO project_modules(project_id,module_code,module_name,enabled,sort_order,source,last_part_type,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
                     (project_id, module_code, module_name, int(module_code not in {"06", "90", "99"}), sort_order, "default", "自制机加工件", now, now),
@@ -363,8 +365,8 @@ class Repository:
         enabled_codes = enabled_codes if enabled_codes is not None else {code for code, _ in modules}
         with self.database.transaction() as connection:
             for sort_order, (code, name) in enumerate(modules):
-                code, name = str(code).zfill(2), str(name or "").strip()
-                if not re.fullmatch(r"\d{2}", code) or not name:
+                code, name = normalize_module(code), str(name or "").strip()
+                if not re.fullmatch(r"[A-Z0-9]{1,12}", code) or not name:
                     continue
                 connection.execute(
                     "INSERT INTO project_modules(project_id,module_code,module_name,enabled,sort_order,source,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?) "
@@ -375,9 +377,9 @@ class Repository:
 
     def create_module(self, project_id: int, module_code: str, module_name: str, *, enabled: bool = True,
                       before_code: str | None = None, source: str = "user") -> dict:
-        code, name = str(module_code).strip().zfill(2), str(module_name).strip()
-        if not re.fullmatch(r"\d{2}", code) or not name:
-            raise ValueError("模块编号必须是两位数字，模块名称不能为空。")
+        code, name = normalize_module(module_code), str(module_name).strip()
+        if not re.fullmatch(r"[A-Z0-9]{1,12}", code) or not name:
+            raise ValueError("模块代号必须为1至12位字母或数字，模块名称不能为空。")
         now = _now()
         with self.database.transaction() as connection:
             duplicate = connection.execute("SELECT 1 FROM project_modules WHERE project_id=? AND module_code=?", (project_id, code)).fetchone()
@@ -386,7 +388,7 @@ class Repository:
             max_order = connection.execute("SELECT COALESCE(MAX(sort_order), -1) FROM project_modules WHERE project_id=?", (project_id,)).fetchone()[0]
             order = int(max_order) + 1
             if before_code:
-                row = connection.execute("SELECT sort_order FROM project_modules WHERE project_id=? AND module_code=?", (project_id, str(before_code).zfill(2))).fetchone()
+                row = connection.execute("SELECT sort_order FROM project_modules WHERE project_id=? AND module_code=?", (project_id, normalize_module(before_code))).fetchone()
                 if row:
                     order = int(row[0])
                     connection.execute("UPDATE project_modules SET sort_order=sort_order+1 WHERE project_id=? AND sort_order>=?", (project_id, order))
@@ -396,10 +398,10 @@ class Repository:
 
     def update_module(self, project_id: int, module_code: str, *, new_code: str | None = None,
                       module_name: str | None = None, enabled: bool | None = None) -> dict:
-        old_code = str(module_code).strip().zfill(2)
-        code = str(new_code if new_code is not None else old_code).strip().zfill(2)
-        if not re.fullmatch(r"\d{2}", code):
-            raise ValueError("模块编号必须是两位数字。")
+        old_code = normalize_module(module_code)
+        code = normalize_module(new_code if new_code is not None else old_code)
+        if not re.fullmatch(r"[A-Z0-9]{1,12}", code):
+            raise ValueError("模块代号必须为1至12位字母或数字。")
         now = _now()
         with self.database.transaction() as connection:
             row = connection.execute("SELECT * FROM project_modules WHERE project_id=? AND module_code=?", (project_id, old_code)).fetchone()
@@ -417,9 +419,31 @@ class Repository:
     def set_module_enabled(self, project_id: int, module_code: str, enabled: bool) -> dict:
         return self.update_module(project_id, module_code, enabled=enabled)
 
+    def revise_module(self, project_id: int, old_code: str, new_code: str, name: str) -> dict:
+        """Change future naming without rewriting historical module identities."""
+        old_code, new_code = validate_module(old_code), validate_module(new_code)
+        name = name.strip()
+        if not name:
+            raise ValueError("模块名称不能为空。")
+        if old_code == new_code:
+            return self.update_module(project_id, old_code, module_name=name)
+        now = _now()
+        with self.database.transaction() as connection:
+            row = connection.execute("SELECT * FROM project_modules WHERE project_id=? AND module_code=?", (project_id, old_code)).fetchone()
+            if row is None:
+                raise LookupError("模块不存在。")
+            if connection.execute("SELECT 1 FROM project_modules WHERE project_id=? AND module_code=?", (project_id, new_code)).fetchone():
+                raise ValueError(f"模块 {new_code} 已存在，请选择该模块或使用不同代号。")
+            # Keep the former category and its counters, even if its records were deleted.
+            connection.execute("INSERT INTO project_modules(project_id,module_code,module_name,enabled,sort_order,source,last_part_type,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                               (project_id, new_code, name, 1, row["sort_order"], "user", SIMPLE_TYPE, now, now))
+            connection.execute("UPDATE project_modules SET enabled=0,updated_at=? WHERE project_id=? AND module_code=?", (now, project_id, old_code))
+            self._audit(connection, "modify_module", project_id, "", "", "", "", {"module_code": old_code}, {"module_code": new_code})
+        return next(item for item in self.list_modules(project_id) if item["module_code"] == new_code)
+
     def move_module(self, project_id: int, module_code: str, direction: int) -> list[dict]:
         items = self.list_modules(project_id, enabled_only=False)
-        index = next((i for i, item in enumerate(items) if item["module_code"] == str(module_code).zfill(2)), -1)
+        index = next((i for i, item in enumerate(items) if item["module_code"] == normalize_module(module_code)), -1)
         target = index + (1 if direction > 0 else -1)
         if index < 0 or target < 0 or target >= len(items):
             return items
@@ -432,7 +456,7 @@ class Repository:
         return self.list_modules(project_id, enabled_only=False)
 
     def delete_module(self, project_id: int, module_code: str) -> None:
-        code = str(module_code).zfill(2)
+        code = normalize_module(module_code)
         with self.database.transaction() as connection:
             used = connection.execute("SELECT COUNT(*) FROM drawing_records WHERE project_id=? AND module_code=?", (project_id, code)).fetchone()[0]
             if used:
@@ -447,9 +471,9 @@ class Repository:
         now = _now()
         with self.database.transaction() as connection:
             for item in modules:
-                code = str(item.get("module_code", "")).zfill(2)
+                code = normalize_module(item.get("module_code", ""))
                 name = str(item.get("module_name", "")).strip()
-                if not re.fullmatch(r"\d{2}", code) or not name:
+                if not re.fullmatch(r"[A-Z0-9]{1,12}", code) or not name:
                     continue
                 row = connection.execute("SELECT * FROM project_modules WHERE project_id=? AND module_code=?", (project_id, code)).fetchone()
                 if row is None:
@@ -615,10 +639,15 @@ class Repository:
         with self.database.transaction() as connection:
             connection.execute("DELETE FROM ai_conversations WHERE conversation_id=?", (conversation_id,))
 
-    def add_ai_message(self, conversation_id: int, role: str, content: str, token_usage: dict | None = None) -> int:
+    def add_ai_message(self, conversation_id: int, role: str, content: str, token_usage: dict | None = None, *, design_preference: str | None = None) -> int:
+        if design_preference is not None and (role != 'user' or not design_preference.strip() or len(design_preference.strip()) > 2000):
+            raise ValueError("明确个人习惯应为1至2000字，且只能来自用户消息。")
         now = _now()
         with self.database.transaction() as connection:
             cursor = connection.execute("INSERT INTO ai_messages(conversation_id,role,content,token_usage,created_at) VALUES (?,?,?,?,?)", (conversation_id, role, content, json.dumps(token_usage or {}, ensure_ascii=False), now))
+            message_id = int(cursor.lastrowid)
+            if design_preference is not None:
+                connection.execute("INSERT INTO design_preferences(content,source_message_id,source,created_at,updated_at) VALUES (?,?,'explicit',?,?) ON CONFLICT(content) DO UPDATE SET source='explicit',updated_at=excluded.updated_at", (design_preference.strip(), message_id, now, now))
             if role == "user":
                 row = connection.execute(
                     "SELECT title FROM ai_conversations WHERE conversation_id=?", (conversation_id,)
@@ -633,7 +662,7 @@ class Repository:
                     connection.execute("UPDATE ai_conversations SET updated_at=? WHERE conversation_id=?", (now, conversation_id))
             else:
                 connection.execute("UPDATE ai_conversations SET updated_at=? WHERE conversation_id=?", (now, conversation_id))
-            return int(cursor.lastrowid)
+            return message_id
 
     def list_ai_messages(self, conversation_id: int) -> list[dict]:
         with self.database.connect() as connection:
@@ -648,21 +677,33 @@ class Repository:
         summary_character_limit: int = 4000,
     ) -> dict:
         """Return bounded context and roll older messages into a local summary."""
+        if recent_limit < 1 or summary_threshold < recent_limit or summary_character_limit < 160:
+            raise ValueError("会话上下文限额无效。")
         conversation = self.get_conversation(conversation_id)
-        messages = self.list_ai_messages(conversation_id)
-        summary = str(conversation.get("conversation_summary") or "")
-        through = int(conversation.get("summary_through_message_id") or 0)
-        if len(messages) > summary_threshold:
-            older = messages[:-recent_limit]
-            additions = [item for item in older if int(item["message_id"]) > through]
-            if additions:
-                lines = []
-                for item in additions:
-                    role = {"user": "用户", "assistant": "AI", "system": "系统"}.get(item["role"], item["role"])
-                    compact = " ".join(str(item["content"]).split())
-                    lines.append(f"{role}：{compact[:500]}")
-                summary = (summary + "\n" + "\n".join(lines)).strip()[-summary_character_limit:]
-                through = int(older[-1]["message_id"])
+        with self.database.connect() as connection:
+            total = connection.execute("SELECT COUNT(*) FROM ai_messages WHERE conversation_id=?", (conversation_id,)).fetchone()[0]
+            recent = [dict(r) for r in connection.execute(
+                "SELECT * FROM ai_messages WHERE conversation_id=? ORDER BY message_id DESC LIMIT ?",
+                (conversation_id, recent_limit if total > summary_threshold else summary_threshold))][::-1]
+        summary = ""
+        if total > summary_threshold:
+            from ..ai.design_context import summarize_history
+            cutoff = recent[0]['message_id']
+            with self.database.connect() as connection:
+                through = connection.execute("SELECT MAX(message_id) FROM ai_messages WHERE conversation_id=? AND message_id<?", (conversation_id, cutoff)).fetchone()[0]
+                candidates = {}
+                # Read bounded originals: initial goals, recent corrections/users and AI.
+                for role, order, amount, changes in (("user", "ASC", 4, False), ("user", "DESC", 12, True),
+                                                    ("user", "DESC", 12, False), ("assistant", "DESC", 4, False)):
+                    condition = " AND (" + " OR ".join("content LIKE ?" for _ in range(13)) + ")" if changes else ""
+                    args = [conversation_id, cutoff, role]
+                    if changes:
+                        args += ['%' + word + '%' for word in ('改为', '改成', '更正', '纠正', '取消', '不再', '采用', '确定', '确认', '最终', '选择', '待定', '尚未')]
+                    args.append(amount)
+                    for r in connection.execute("SELECT message_id,role,content FROM ai_messages WHERE conversation_id=? AND message_id<? AND role=?" + condition + f" ORDER BY message_id {order} LIMIT ?", args):
+                        candidates[r['message_id']] = dict(r)
+            summary = summarize_history(sorted(candidates.values(), key=lambda m: m['message_id']), summary_character_limit)
+            if summary != conversation.get("conversation_summary") or through != conversation.get("summary_through_message_id"):
                 with self.database.transaction() as connection:
                     connection.execute(
                         """UPDATE ai_conversations
@@ -670,35 +711,130 @@ class Repository:
                            WHERE conversation_id=?""",
                         (summary, through, _now(), conversation_id),
                     )
-            recent = messages[-recent_limit:]
-        else:
-            recent = messages
         return {
             "conversation": self.get_conversation(conversation_id),
             "summary": summary,
             "recent_messages": recent,
-            "total_message_count": len(messages),
+            "total_message_count": total,
             "summary_loaded": bool(summary),
         }
 
     def save_project_memory(self, project_id: int, title: str, content: str, module_code: str = "", source_message_id: int | None = None, confidence: int = 100) -> int:
         now = _now()
         with self.database.transaction() as connection:
-            cursor = connection.execute("INSERT INTO project_memories(project_id,module_code,title,content,source_message_id,confidence,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)", (project_id, str(module_code or "").zfill(2) if module_code else "", title.strip(), content.strip(), source_message_id, max(0, min(100, int(confidence))), now, now))
+            cursor = connection.execute("INSERT INTO project_memories(project_id,module_code,title,content,source_message_id,confidence,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)", (project_id, normalize_module(module_code) if module_code else "", title.strip(), content.strip(), source_message_id, max(0, min(100, int(confidence))), now, now))
             return int(cursor.lastrowid)
 
     def list_project_memories(self, project_id: int | None = None, module_code: str = "", query: str = "", limit: int = 10) -> list[dict]:
+        from ..ai.design_context import memory_rank_sql
         where, args = ["enabled=1"], []
         if project_id is not None: where.append("project_id=?"); args.append(project_id)
-        if module_code: where.append("(module_code=? OR module_code='')"); args.append(str(module_code).zfill(2))
-        if query.strip(): where.append("(title LIKE ? OR content LIKE ?)"); args.extend([f"%{query.strip()}%"] * 2)
-        args.append(limit)
+        if module_code: where.append("(module_code=? OR module_code='')"); args.append(normalize_module(module_code))
         with self.database.connect() as connection:
-            return [dict(row) for row in connection.execute(f"SELECT * FROM project_memories WHERE {' AND '.join(where)} ORDER BY updated_at DESC,memory_id DESC LIMIT ?", args).fetchall()]
+            if query.strip():
+                rank, keywords = memory_rank_sql(query, ('title', 'content'))
+                sql = f"SELECT * FROM (SELECT *, ({rank}) AS _relevance FROM project_memories WHERE {' AND '.join(where)}) WHERE _relevance>0 ORDER BY _relevance DESC,(module_code=?) DESC,updated_at DESC,memory_id DESC LIMIT ?"
+                return [dict(r) for r in connection.execute(sql, [*keywords, *args, module_code, limit])]
+            return [dict(r) for r in connection.execute(f"SELECT * FROM project_memories WHERE {' AND '.join(where)} ORDER BY updated_at DESC,memory_id DESC LIMIT ?", [*args, limit])]
+
+    def save_design_preference(self, content: str, source_message_id: int | None = None, preference_id: int | None = None) -> int:
+        from ..ai.design_context import MAX_MEMORY_CHARS
+        content = content.strip()
+        if not content or len(content) > MAX_MEMORY_CHARS:
+            raise ValueError("个人习惯应为1至2000字，请只保存通用表达和工作方法。")
+        now = _now()
+        with self.database.transaction() as connection:
+            if preference_id is not None:
+                connection.execute("UPDATE design_preferences SET content=?,source='manual',updated_at=? WHERE preference_id=?", (content, now, preference_id))
+                return preference_id
+            connection.execute("INSERT INTO design_preferences(content,source_message_id,created_at,updated_at) VALUES (?,?,?,?) ON CONFLICT(content) DO UPDATE SET source='manual',updated_at=excluded.updated_at", (content, source_message_id, now, now))
+            return int(connection.execute("SELECT preference_id FROM design_preferences WHERE content=?", (content,)).fetchone()[0])
+
+    def list_design_preferences(self, query: str = "", limit: int = 12) -> list[dict]:
+        from ..ai.design_context import memory_rank_sql
+        from ..ai.habit_learning import habit_keys
+        with self.database.connect() as connection:
+            rank, keywords = memory_rank_sql(query, ('content',))
+            fixed_keys = {key for r in connection.execute("SELECT content FROM design_preferences WHERE source<>'auto'") for key in habit_keys(r['content'])}
+            rows = [dict(r) for r in connection.execute(f"SELECT *, ({rank}) AS _relevance FROM design_preferences ORDER BY _relevance DESC,updated_at DESC,preference_id DESC LIMIT ?", [*keywords, limit + 5])]
+        return [r for r in rows if not query or r['source'] != 'auto' or r['habit_key'] not in fixed_keys][:limit]
+
+    def delete_design_preference(self, preference_id: int) -> None:
+        with self.database.transaction() as connection:
+            row = connection.execute('SELECT habit_key FROM design_preferences WHERE preference_id=?', (preference_id,)).fetchone()
+            if row and row['habit_key']:
+                last = connection.execute('SELECT COALESCE(MAX(message_id),0) FROM ai_messages').fetchone()[0]
+                connection.execute("INSERT INTO ai_memory_settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", ('auto_habit_ignore_before:' + row['habit_key'], str(last)))
+            connection.execute("DELETE FROM design_preferences WHERE preference_id=?", (preference_id,))
+
+    def auto_habit_learning_enabled(self) -> bool:
+        with self.database.connect() as connection:
+            row = connection.execute("SELECT value FROM ai_memory_settings WHERE key='auto_habit_learning'").fetchone()
+        return row is None or row['value'] == '1'
+
+    def set_auto_habit_learning(self, enabled: bool) -> None:
+        with self.database.transaction() as connection:
+            last = connection.execute('SELECT COALESCE(MAX(message_id),0) FROM ai_messages').fetchone()[0]
+            for key, value in (('auto_habit_learning', str(int(enabled))), ('auto_habit_history_after', str(last))):
+                connection.execute('INSERT INTO ai_memory_settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', (key, value))
+
+    def learn_design_habits(self, message_id: int) -> list[str]:
+        from ..ai.habit_learning import detect_habits, habit_keys
+        from ..ai.design_context import explicit_preference
+        if not self.auto_habit_learning_enabled():
+            return []
+        notices = []
+        with self.database.transaction() as c:
+            message = c.execute("SELECT role,content FROM ai_messages WHERE message_id=?", (message_id,)).fetchone()
+            if not message or message['role'] != 'user' or explicit_preference(message['content']):
+                return []
+            habits = detect_habits(message['content'])
+            if not habits:
+                return []
+            settings = dict(c.execute("SELECT key,value FROM ai_memory_settings WHERE key LIKE 'auto_habit_%'"))
+            if message_id <= int(settings.get('auto_habit_history_after', 0)):
+                return []
+            recent = [dict(r) for r in c.execute("SELECT message_id,substr(content,1,2001) AS content FROM ai_messages WHERE role='user' AND message_id<=? AND message_id>? ORDER BY message_id DESC LIMIT 60", (message_id, int(settings.get('auto_habit_history_after', 0))))]
+            existing = [dict(r) for r in c.execute('SELECT * FROM design_preferences')]
+            for habit in habits:
+                key, content = habit['key'], habit['content']
+                fixed = [r for r in existing if r['source'] != 'auto' and key in habit_keys(r['content'])]
+                if fixed:
+                    if any(habit_keys(r['content'])[key] != content for r in fixed):
+                        notices.append('已有手动习惯，未自动覆盖；可在管理记忆中修改')
+                    continue
+                old = next((r for r in existing if r['source'] == 'auto' and r['habit_key'] == key), None)
+                cutoff = int(settings.get('auto_habit_ignore_before:' + key, 0))
+                if message_id <= cutoff:
+                    continue
+                if old and old['content'] != content:
+                    cutoff = max(cutoff, old['source_message_id'] or 0)
+                evidence = sum(r['message_id'] > cutoff and any(h['key'] == key and h['content'] == content for h in detect_habits(r['content'])) for r in recent)
+                if not habit['strong'] and evidence < 2:
+                    continue
+                if old and old['source_message_id'] == message_id:
+                    continue
+                if old:
+                    c.execute('UPDATE design_preferences SET content=?,source_message_id=?,evidence_count=?,updated_at=? WHERE preference_id=?', (content, message_id, evidence, _now(), old['preference_id']))
+                elif not any(r['content'] == content for r in existing):
+                    c.execute("INSERT INTO design_preferences(content,habit_key,source,source_message_id,evidence_count,created_at,updated_at) VALUES (?,?,'auto',?,?,?,?)", (content, key, message_id, evidence, _now(), _now()))
+                notices.append('自动记住：' + content)
+        return list(dict.fromkeys(notices))
+
+    def edit_project_memory(self, memory_id: int, project_id: int, content: str) -> None:
+        from ..ai.design_context import MAX_MEMORY_CHARS
+        if not content.strip() or len(content.strip()) > MAX_MEMORY_CHARS:
+            raise ValueError("项目结论应为1至2000字。")
+        with self.database.transaction() as connection:
+            connection.execute("UPDATE project_memories SET content=?,updated_at=? WHERE memory_id=? AND project_id=?", (content.strip(), _now(), memory_id, project_id))
+
+    def delete_project_memory(self, memory_id: int, project_id: int) -> None:
+        with self.database.transaction() as connection:
+            connection.execute("DELETE FROM project_memories WHERE memory_id=? AND project_id=?", (memory_id, project_id))
 
     def singleton_record(self, project_id: int, module_code: str, part_type: str) -> dict | None:
         """Return the existing singleton (总成) row for a module, or None."""
-        module_code = str(module_code).zfill(2)
+        module_code = normalize_module(module_code)
         with self.database.connect() as connection:
             row = connection.execute(
                 "SELECT id,full_name,part_sequence,status FROM drawing_records "
@@ -712,12 +848,15 @@ class Repository:
         return connection.execute(
             "SELECT id,full_name FROM drawing_records "
             "WHERE project_id=? AND module_code=? AND part_type=? ORDER BY id LIMIT 1",
-            (project_id, str(module_code).zfill(2), part_type),
+            (project_id, normalize_module(module_code), part_type),
         ).fetchone()
 
     def get_next_named_number(self, project_id: int, module_code: str, part_type: str) -> int:
+        if part_type == SIMPLE_TYPE:
+            with self.database.connect() as connection:
+                return choose_sequence(connection, project_id, module_code)
         start, end = part_type_range(part_type)
-        module_code = str(module_code).zfill(2)
+        module_code = normalize_module(module_code)
         if is_singleton_part_type(part_type):
             # 总成 is a per-module singleton: it is always 000 and never uses the
             # monotonic counter, so "1 > 0 序号已用尽" can no longer be produced.
@@ -749,13 +888,18 @@ class Repository:
 
     def save_named_record(self, project_id: int, module_code: str, part_type: str, part_name: str,
                           extra_notes: str = "", is_copied: bool = False,
-                          creation_method: str = "manual") -> DrawingRecord:
-        module_code = str(module_code or "").strip().zfill(2)
+                          creation_method: str = "manual", sequence_override: int | None = None) -> DrawingRecord:
+        from ..file_sync import ensure_external_numbers_registered
+        ensure_external_numbers_registered(self, project_id)
+        module_code = normalize_module(module_code)
         part_name = str(part_name or "").strip()
         extra_notes = str(extra_notes or "").strip()
         if not module_code or not part_name:
             raise ValueError("模块和零件名称不能为空。")
-        start, end = part_type_range(part_type)
+        start, end = (1, 999) if part_type == SIMPLE_TYPE else part_type_range(part_type)
+        if part_type == SIMPLE_TYPE:
+            from ..solidworks.validation import validate_part_name
+            validate_part_name(part_name)
         now = _now()
         with self.database.transaction() as connection:
             project = connection.execute("SELECT * FROM projects WHERE id=?", (project_id,)).fetchone()
@@ -767,7 +911,9 @@ class Repository:
             if module is None:
                 raise ValueError(f"模块 {module_code} 尚未启用。")
             singleton = is_singleton_part_type(part_type)
-            if singleton:
+            if part_type == SIMPLE_TYPE:
+                sequence = choose_sequence(connection, project_id, module_code, sequence_override)
+            elif singleton:
                 # 总成：固定 000，每模块仅一个，且完全不触碰递增计数器。
                 existing = self._singleton_exists(connection, project_id, module_code, part_type)
                 if existing is not None:
@@ -793,7 +939,7 @@ class Repository:
                     raise ValueError(f"模块 {module_code} 的{part_type}序号已用尽。")
             legacy_row = connection.execute("SELECT MAX(drawing_number) AS current FROM drawing_records WHERE project_id=?", (project_id,)).fetchone()
             drawing_number = 1 if legacy_row["current"] is None else int(legacy_row["current"]) + 1
-            full_name = compose_full_name(project["code"], module_code, sequence, part_name)
+            full_name = (simple_full_name if part_type == SIMPLE_TYPE else compose_full_name)(project["code"], module_code, sequence, part_name)
             cursor = connection.execute(
                 """INSERT INTO drawing_records
                 (project_id,project_name,project_code,drawing_number,filename,part_name,purpose,record_date,created_at,updated_at,status,is_copied,creation_method,project_directory,extra_notes,module_code,part_sequence,part_type,full_name,project_directory_snapshot)
@@ -805,7 +951,7 @@ class Repository:
                 connection.execute(
                     """INSERT INTO part_sequence_counters(project_id,module_code,part_type,next_sequence,updated_at)
                        VALUES (?,?,?,?,?)
-                       ON CONFLICT(project_id,module_code,part_type) DO UPDATE SET next_sequence=excluded.next_sequence,updated_at=excluded.updated_at""",
+                       ON CONFLICT(project_id,module_code,part_type) DO UPDATE SET next_sequence=MAX(part_sequence_counters.next_sequence,excluded.next_sequence),updated_at=excluded.updated_at""",
                     (project_id, module_code, part_type, sequence + 1, now),
                 )
             connection.execute("UPDATE projects SET updated_at=?,last_used_at=? WHERE id=?", (now, now, project_id))
@@ -822,6 +968,10 @@ class Repository:
         exists = bool(path and path.is_file())
         return {"record": record, "file_path": str(path) if path else "", "physical_file_exists": exists,
                 "has_physical_file": exists}
+
+    def list_record_files(self, record_id: int) -> list[dict]:
+        with self.database.connect() as connection:
+            return [dict(r) for r in connection.execute('SELECT * FROM record_files WHERE record_id=? ORDER BY file_id', (record_id,))]
 
     def delete_record(self, record_id: int, *, reason: str = "deleted_error") -> DrawingRecord:
         """Delete only the database record; never remove project or physical files."""
@@ -882,7 +1032,7 @@ class Repository:
                     project_id = int(issue["project_id"])
                     connection.execute("UPDATE projects SET code=?,updated_at=? WHERE id=?", (issue["suggested_code"], now, project_id))
                     connection.execute("UPDATE drawing_records SET project_code=?,updated_at=? WHERE project_id=?", (issue["suggested_code"], now, project_id))
-                    code = str(issue.get("module_code") or "00").zfill(2)
+                    code = normalize_module(issue.get("module_code") or "00")
                     connection.execute("UPDATE drawing_records SET module_code=?,part_sequence=CASE WHEN part_sequence=0 THEN drawing_number ELSE part_sequence END WHERE project_id=? AND module_code='00'", (code, project_id))
                     connection.execute(
                         "UPDATE drawing_records SET full_name=project_code || '-' || module_code || '-' || printf('%03d', part_sequence) || CASE WHEN part_name<>'' THEN ' ' || part_name ELSE '' END WHERE project_id=?",
@@ -917,8 +1067,8 @@ class Repository:
             parameters.append(project_id)
         if query.strip():
             like = f"%{query.strip()}%"
-            where.append("(filename LIKE ? OR part_name LIKE ? OR purpose LIKE ? OR extra_notes LIKE ?)")
-            parameters.extend([like, like, like, like])
+            where.append("(filename LIKE ? OR full_name LIKE ? OR (full_name || file_extension) LIKE ? OR part_name LIKE ? OR purpose LIKE ? OR extra_notes LIKE ? OR module_code LIKE ? OR project_code LIKE ? OR project_name LIKE ? OR file_path LIKE ? OR EXISTS (SELECT 1 FROM project_modules m WHERE m.project_id=drawing_records.project_id AND m.module_code=drawing_records.module_code AND m.module_name LIKE ?))")
+            parameters.extend([like] * 11)
         if date_from:
             where.append("record_date>=?")
             parameters.append(date_from)
@@ -938,12 +1088,12 @@ class Repository:
         if not part_name:
             raise ValueError("零件名称不能为空。")
         with self.database.transaction() as connection:
-            row = connection.execute("SELECT filename FROM drawing_records WHERE id=?", (record_id,)).fetchone()
+            row = connection.execute("SELECT filename,part_type FROM drawing_records WHERE id=?", (record_id,)).fetchone()
             if row is None:
                 raise LookupError("图号记录不存在。")
             connection.execute(
                 "UPDATE drawing_records SET part_name=?, full_name=?, purpose=?, extra_notes=?, updated_at=? WHERE id=?",
-                (part_name, f"{row['filename']} {part_name}".strip(), purpose, extra_notes, _now(), record_id),
+                (part_name, (row["filename"] + ("-" if row["part_type"] == SIMPLE_TYPE else " ") + part_name).strip(), purpose, extra_notes, _now(), record_id),
             )
         return self.get_record(record_id)
 

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2026 zhang18166
 
+from ..numbering.simple import module_code as normalize_module
 import json
 
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -121,8 +122,8 @@ class AIPlanHistoryDialog(QDialog):
         self.code.setText(str(first.get("code", ""))); self.name.setText(str(first.get("project_name", first.get("name", ""))))
         for module in decoded["modules"]:
             row = QWidget(); row_layout = QHBoxLayout(row); row_layout.setContentsMargins(0, 0, 0, 0)
-            check = QCheckBox(str(module.get("module_code", "")).zfill(2)); check.setChecked(True); check.setProperty("module", module)
-            name_edit = QLineEdit(str(module.get("module_name", ""))); name_edit.setProperty("module_code", str(module.get("module_code", "")).zfill(2)); check.setProperty("name_edit", name_edit)
+            check = QCheckBox(normalize_module(module.get("module_code", ""))); check.setChecked(True); check.setProperty("module", module)
+            name_edit = QLineEdit(str(module.get("module_name", ""))); name_edit.setProperty("module_code", normalize_module(module.get("module_code", ""))); check.setProperty("name_edit", name_edit)
             row_layout.addWidget(check); row_layout.addWidget(name_edit, 1); self.modules_box.addWidget(row)
         adoptable = bool(decoded["adoptable"] and plan.get("status") != "failed")
         self._set_actions(adoptable)

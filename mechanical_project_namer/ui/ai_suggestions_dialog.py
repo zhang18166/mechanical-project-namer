@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2026 zhang18166
 
+from ..numbering.simple import module_code as normalize_module
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QDialog, QHBoxLayout, QLabel, QLineEdit, QInputDialog, QPushButton,
@@ -55,7 +56,7 @@ class AISuggestionsDialog(QDialog):
                 module_layout.addWidget(QLabel("采用并创建以下模块："))
                 self.module_checks: list[tuple[str, QCheckBox]] = []
                 for item in result.module_recommendations:
-                    code = str(item.get("module_code", "")).zfill(2)
+                    code = normalize_module(item.get("module_code", ""))
                     check = QCheckBox(f"{code} {item.get('module_name', '')}")
                     check.setChecked(code not in {"06", "90", "99"})
                     self.module_checks.append((code, check))

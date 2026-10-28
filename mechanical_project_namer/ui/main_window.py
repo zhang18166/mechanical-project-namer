@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2026 zhang18166
 
+from ..numbering.simple import module_code as normalize_module
 from PyQt6.QtCore import QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QCloseEvent
 from PyQt6.QtWidgets import (
@@ -56,6 +57,7 @@ class MainWindow(QMainWindow):
     module_create_requested = pyqtSignal()
     design_chat_requested = pyqtSignal()
     plan_history_requested = pyqtSignal()
+    file_sync_requested = pyqtSignal()
 
     def __init__(self, settings: AppSettings) -> None:
         super().__init__()
@@ -187,31 +189,24 @@ class MainWindow(QMainWindow):
     def _build_current_page(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(24, 20, 24, 20)
-        layout.setSpacing(16)
+        layout.setContentsMargins(20, 14, 20, 14)
+        layout.setSpacing(10)
         header = QHBoxLayout()
         title_box = QVBoxLayout()
         title = QLabel("当前项目")
         title.setObjectName("pageTitle")
         title_box.addWidget(title)
-        summary = QLabel("当前项目的模块、类别与编号预览")
-        summary.setObjectName("mutedText")
-        title_box.addWidget(summary)
         header.addLayout(title_box)
         header.addStretch()
         new_button = QPushButton("新建项目")
         new_button.setProperty("kind", "secondary")
         new_button.clicked.connect(self.new_project_requested)
         header.addWidget(new_button)
-        mini = QPushButton("Mini 窗格")
-        mini.setProperty("kind", "secondary")
-        mini.clicked.connect(self.mini_requested)
-        header.addWidget(mini)
         layout.addLayout(header)
         ai_band = QFrame()
         ai_band.setObjectName("aiBand")
         ai_layout = QVBoxLayout(ai_band)
-        ai_layout.setContentsMargins(16, 13, 16, 13)
+        ai_layout.setContentsMargins(12, 4, 12, 4)
         self.ai_toggle = QPushButton("展开 AI 规划建议")
         self.ai_toggle.setProperty("kind", "ghost")
         self.ai_toggle.setCheckable(True)
@@ -283,28 +278,28 @@ class MainWindow(QMainWindow):
         naming = QFrame()
         naming.setObjectName("namingPanel")
         naming_layout = QVBoxLayout(naming)
-        naming_layout.setContentsMargins(16, 13, 16, 14)
+        naming_layout.setContentsMargins(14, 10, 14, 10)
+        naming_layout.setSpacing(6)
         self.project_summary = QLabel("请先新建项目")
         self.project_summary.setObjectName("mutedText")
         naming_layout.addWidget(self.project_summary)
+        module_header = QHBoxLayout()
         module_label = QLabel("模块")
         module_label.setObjectName("mutedText")
-        naming_layout.addWidget(module_label)
+        module_header.addWidget(module_label)
+        module_header.addStretch()
+        manage_module = QPushButton("模块管理")
+        manage_module.setProperty("kind", "ghost")
+        module_menu = QMenu(manage_module)
+        module_menu.addAction("新增模块").triggered.connect(self.module_create_requested)
+        module_menu.addAction("管理模块").triggered.connect(lambda: self.module_manage_requested.emit("", "manage"))
+        manage_module.setMenu(module_menu)
+        module_header.addWidget(manage_module)
+        naming_layout.addLayout(module_header)
         self.module_buttons: list[QPushButton] = []
         self.module_flow_widget = QWidget()
-        self.module_flow = FlowLayout(self.module_flow_widget, spacing=8)
+        self.module_flow = FlowLayout(self.module_flow_widget, spacing=6)
         naming_layout.addWidget(self.module_flow_widget)
-        module_actions = QHBoxLayout()
-        add_module = QPushButton("+ 新增模块")
-        add_module.setProperty("kind", "secondary")
-        add_module.clicked.connect(self.module_create_requested)
-        manage_module = QPushButton("管理模块")
-        manage_module.setProperty("kind", "secondary")
-        manage_module.clicked.connect(lambda: self.module_manage_requested.emit("", "manage"))
-        module_actions.addWidget(add_module)
-        module_actions.addWidget(manage_module)
-        module_actions.addStretch()
-        naming_layout.addLayout(module_actions)
         type_row_widget = QWidget()
         type_row = FlowLayout(type_row_widget, spacing=8)
         type_row.addWidget(QLabel("零件类别"))
@@ -313,12 +308,12 @@ class MainWindow(QMainWindow):
             self.part_type.addItem(f"{name} {label}", name)
         self.part_type.currentIndexChanged.connect(lambda _index: self.part_type_selected.emit(self.part_type.currentData()))
         type_row.addWidget(self.part_type)
-        type_row.addWidget(QLabel("当前编号"))
-        naming_layout.addWidget(type_row_widget)
+        type_row.addWidget(QLabel("当前图号"))
         self.preview = QLabel("—")
         self.preview.setObjectName("filePreview")
         self.preview.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        naming_layout.addWidget(self.preview)
+        type_row.addWidget(self.preview)
+        naming_layout.addWidget(type_row_widget)
         fields_widget = QWidget()
         self.part_fields_flow = FlowLayout(fields_widget, spacing=12)
         self.part_name = QLineEdit()
@@ -349,12 +344,15 @@ class MainWindow(QMainWindow):
         self.naming_actions_flow = FlowLayout(button_row_widget, spacing=8)
         self.copy_button = QPushButton("仅复制")
         self.copy_button.setProperty("kind", "ghost")
+        self.copy_button.setToolTip("复制当前名称，不保存记录、不推进编号。")
         self.copy_button.clicked.connect(self.copy_requested)
         self.save_button = QPushButton("保存并复制")
         self.save_button.setProperty("kind", "secondary")
+        self.save_button.setToolTip("保存命名记录并复制名称；不创建实际设计文件。")
         self.save_button.clicked.connect(self._save)
         self.solidworks_button = QPushButton("创建并打开SW零件")
         self.solidworks_button.setProperty("kind", "primary")
+        self.solidworks_button.setToolTip("创建并打开实际 SW 零件文件；成功后保存命名记录。")
         self.solidworks_button.clicked.connect(lambda: self.solidworks_requested.emit(self.part_name.text(), self.extra_notes.text()))
         self.solidworks_cancel = QPushButton("取消创建")
         self.solidworks_cancel.setProperty("kind", "secondary")
@@ -370,6 +368,8 @@ class MainWindow(QMainWindow):
         sw_path_row = QHBoxLayout()
         sw_path_row.addWidget(QLabel("SW保存目录："))
         self.solidworks_directory_label = QLabel("未设置")
+        self.solidworks_directory_label.setMinimumWidth(0)
+        self.solidworks_directory_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.solidworks_directory_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.solidworks_directory_label.setToolTip("SOLIDWORKS零件实际保存目录")
         sw_path_row.addWidget(self.solidworks_directory_label, 1)
@@ -380,6 +380,7 @@ class MainWindow(QMainWindow):
         naming_layout.addLayout(sw_path_row)
         self.solidworks_log_toggle = QPushButton("展开 SOLIDWORKS 运行日志")
         self.solidworks_log_toggle.setProperty("kind", "ghost")
+        self.solidworks_log_toggle.setProperty("compact", True)
         self.solidworks_log_toggle.setCheckable(True)
         self.solidworks_log = QTextEdit()
         self.solidworks_log.setReadOnly(True)
@@ -394,7 +395,7 @@ class MainWindow(QMainWindow):
         records = QFrame()
         records.setObjectName("recordsCard")
         records_layout = QVBoxLayout(records)
-        records_layout.setContentsMargins(16, 14, 16, 16)
+        records_layout.setContentsMargins(14, 10, 14, 10)
         records_layout.addWidget(QLabel("当前项目文件记录"))
         record_header_widget = QWidget()
         self.record_toolbar_flow = FlowLayout(record_header_widget, spacing=8)
@@ -411,6 +412,10 @@ class MainWindow(QMainWindow):
         directory_button.setProperty("kind", "secondary")
         directory_button.clicked.connect(self._open_current_directory)
         self.record_toolbar_flow.addWidget(directory_button)
+        self.file_sync_button = QPushButton('同步已有文件')
+        self.file_sync_button.setProperty('kind', 'secondary')
+        self.file_sync_button.clicked.connect(self.file_sync_requested)
+        self.record_toolbar_flow.addWidget(self.file_sync_button)
         export_button = QPushButton("导出记录 ▼")
         export_button.setProperty("kind", "secondary")
         export_menu = QMenu(export_button)
@@ -420,6 +425,10 @@ class MainWindow(QMainWindow):
         export_button.setMenu(export_menu)
         self.record_toolbar_flow.addWidget(export_button)
         records_layout.addWidget(record_header_widget)
+        self.file_sync_status = QLabel('目录检查：打开项目后检查已有文件，可手动同步。')
+        self.file_sync_status.setObjectName('mutedText')
+        self.file_sync_status.setWordWrap(True)
+        records_layout.addWidget(self.file_sync_status)
         self.current_records = self._record_table(primary_first=True)
         records_layout.addWidget(self.current_records)
         layout.addWidget(records)
@@ -440,6 +449,7 @@ class MainWindow(QMainWindow):
         toolbar_layout.setContentsMargins(16, 13, 16, 13)
         self.history_search = QLineEdit()
         self.history_search.setPlaceholderText("搜索所有项目的文件名、零件名称或备注")
+        self.history_search.returnPressed.connect(self._history_search)
         self.date_from = QDateEdit()
         self.date_from.setCalendarPopup(True)
         self.date_from.setDisplayFormat("yyyy-MM-dd")
@@ -496,21 +506,40 @@ class MainWindow(QMainWindow):
 
     def _record_table(self, primary_first: bool = False) -> QTableWidget:
         table = QTableWidget(0, 11)
-        table.setHorizontalHeaderLabels(["序号", "日期", "完整名称", "项目代号", "模块", "零件序号", "零件名称", "额外备注", "零件类别", "状态", "创建时间"])
+        table.setHorizontalHeaderLabels(["记录序号", "日期", "完整名称", "项目代号", "模块", "图号末段", "零件名称", "额外备注", "零件类别", "状态", "创建时间"])
         configure_table(table)
         table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        if primary_first:
-            header = table.horizontalHeader()
-            header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-            for target_position, logical_index in enumerate((0, 1, 2, 4, 6, 9, 10)):
-                header.moveSection(header.visualIndex(logical_index), target_position)
-            widths = (62, 92, 270, 110, 150, 82, 160, 110, 100, 180, 130)
-            for logical_index, width in enumerate(widths):
-                table.setColumnWidth(logical_index, width)
+        header = table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        for target_position, logical_index in enumerate((2, 3, 4, 8, 9, 1, 6, 7, 0, 5, 10)):
+            header.moveSection(header.visualIndex(logical_index), target_position)
+        widths = (88, 100, 300, 100, 70, 88, 150, 150, 140, 82, 165)
+        for logical_index, width in enumerate(widths):
+            table.setColumnWidth(logical_index, width)
+        table.setColumnHidden(3, primary_first)
+        for column in (0, 5, 6, 7, 10):
+            table.setColumnHidden(column, True)
+        header.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        header.customContextMenuRequested.connect(lambda position: self._record_columns_menu(table, position))
+        header.setToolTip("右键表头可显示或隐藏字段；双击完整名称可复制，右键记录可查看详情。")
         table.doubleClicked.connect(lambda index, source=table: self._record_double_click(source, index))
         table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         table.customContextMenuRequested.connect(lambda position, source=table: self._record_context_menu(source, position))
         return table
+
+    @staticmethod
+    def _record_columns_menu(table: QTableWidget, position) -> None:
+        menu = QMenu(table)
+        header = table.horizontalHeader()
+        for visual_index in range(table.columnCount()):
+            column = header.logicalIndex(visual_index)
+            action = menu.addAction(table.horizontalHeaderItem(column).text())
+            action.setCheckable(True)
+            action.setChecked(not table.isColumnHidden(column))
+            # Always retain a visible name so records remain identifiable.
+            action.setEnabled(column != 2)
+            action.toggled.connect(lambda checked, index=column: table.setColumnHidden(index, not checked))
+        menu.exec(header.mapToGlobal(position))
 
     def _record_double_click(self, table: QTableWidget, index) -> None:
         row = index.row()
@@ -613,7 +642,7 @@ class MainWindow(QMainWindow):
         self.set_record_rows(self.current_records, records)
 
     def _rebuild_module_buttons(self, modules: list[dict], selected_module: str) -> None:
-        signature = tuple((str(item.get("module_code", "")).zfill(2), str(item.get("module_name", "")), bool(item.get("enabled", 1))) for item in modules)
+        signature = tuple((normalize_module(item.get("module_code", "")), str(item.get("module_name", "")), bool(item.get("enabled", 1))) for item in modules)
         if signature == getattr(self, "_module_signature", None):
             for button, (code, _name, _enabled) in zip(self.module_buttons, signature):
                 button.setChecked(code == selected_module)
@@ -625,9 +654,10 @@ class MainWindow(QMainWindow):
                 item.widget().deleteLater()
         self.module_buttons = []
         for item in modules:
-            code = str(item.get("module_code", "")).zfill(2)
+            code = normalize_module(item.get("module_code", ""))
             name = str(item.get("module_name", ""))
             button = QPushButton(f"{code} {name}")
+            button.setProperty("compact", True)
             button.setCheckable(True)
             button.setProperty("kind", "secondary")
             button.setToolTip(f"{code} {name}")
@@ -839,8 +869,6 @@ class MainWindow(QMainWindow):
     def set_solidworks_busy(self, busy: bool) -> None:
         self.solidworks_button.setDisabled(busy)
         self.solidworks_cancel.setVisible(busy)
-        if busy:
-            self.solidworks_status.setText("SW：正在创建")
 
     def set_solidworks_status(self, text: str) -> None:
         self.solidworks_status.setText(f"SW：{text}")

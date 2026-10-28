@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mechanical-project-namer"
-version = "1.6.1"
+version = "1.7.1"
 description = "Windows desktop assistant for mechanical project drawing numbers with local AI memory"
 requires-python = ">=3.12,<3.13"
 license = {text = "GPL-3.0-only"}

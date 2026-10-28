@@ -38,6 +38,7 @@ class ProjectService:
         solidworks_part_directory: str = "",
         start_number: int = 1,
         project_type: str = "formal",
+        modules: list[tuple[str, str]] | None = None,
     ) -> Project:
         name = name.strip()
         code = self.normalize_code(code)
@@ -48,9 +49,10 @@ class ProjectService:
         try:
             project = self.repository.create_project(
                 name, description.strip(), code, notes.strip(), directory.strip(),
-                solidworks_part_directory.strip(), start_number, project_type
+                solidworks_part_directory.strip(), start_number, project_type, modules
             )
-            self.repository.set_modules(project.id, list(MODULES), {"00", "01", "02", "03", "04", "05", "07", "08"})
+            if modules is None:
+                self.repository.set_modules(project.id, list(MODULES), {"00", "01", "02", "03", "04", "05", "07", "08"})
             return project
         except sqlite3.IntegrityError as error:
             raise ValidationError(f"项目代号 {code} 已存在，请使用其他代号。") from error
