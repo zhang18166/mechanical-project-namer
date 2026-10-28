@@ -1,5 +1,17 @@
 # 离线查看组件来源与许可
 
+## Phase 2B：QtPdf（2026-10-28）
+
+PDF后端使用已锁定的PyQt6 6.11.0 / PyQt6-Qt6 6.11.2，运行时未新增或升级第三方库。本地wheel RECORD核实QtPdf.pyd、QtPdfWidgets.pyd属于PyQt6，Qt6Pdf/Qt6PdfWidgets DLL属于PyQt6-Qt6；PDF不要求WebEngine、Node或浏览器资源。
+
+官方依据：[Qt 6.11 PDF模块](https://doc.qt.io/qt-6.11/qtpdf-index.html)、[QPdfView](https://doc.qt.io/qt-6.11/qpdfview.html)、[模块及PDFium许可](https://doc.qt.io/qt-6.11/qtpdf-licensing.html)、[已验收版本QPdfView源码](https://github.com/qt/qtwebengine/blob/v6.11.2/src/pdfwidgets/qpdfview.cpp)、[QPdfDocument源码](https://github.com/qt/qtwebengine/blob/v6.11.2/src/pdf/qpdfdocument.cpp)、[官方PyQt6 6.11.0 wheel](https://pypi.org/project/PyQt6/6.11.0/)。官方在线文档可能随补丁滚动，实际二进制固定6.11.2。QPdfView可用并已真实显示4页样本，最终使用QtPdf原生栅格化配合受限子进程，以满足取消和资源预算；没有复制/改写Qt源码。
+
+PyQt6绑定GPLv3与本项目GPL-3.0-only兼容。QtPdf由Qt提供商业/LGPLv3/GPL选项，源码SPDX同时列明GPLv3；PDFium及其第三方组件保持原许可义务。新增Qt-runtime-LGPL3.txt来自实际官方PyQt6-Qt6 6.11.2 wheel，PyQt GPL文本已保留；不将该文本视为替代PDFium/Chromium所有第三方通知。此阶段仅源码与声明归档，不捆绑DLL或发布安装包；将来分发二进制时须重新收集对应完整第三方许可。
+
+测试生成器依赖reportlab4.4.9（BSD）、pillow12.3.0（MIT-CMU）、charset-normalizer3.5.2（MIT），仅用于自行生成虚构样本，不由客户端导入或分发；来自官方PyPI，精确清单见requirements-pdf-test.lock。真实本机PDF及截图不纳入Git，其内容不被重新许可。
+
+以下保留Phase 2A组件记录。
+
 此目录保留新增组件许可；现有项目GPL-3.0-only及旧安装包声明保持有效。本轮不分发Qt或Chromium二进制，不构建安装包；通过官方PyPI安装的运行库自带其完整许可和第三方通知。
 
 | 组件 | 锁定版本 | 用途 / 许可 |

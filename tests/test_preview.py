@@ -88,7 +88,7 @@ def test_unsupported_type_has_explicit_message(tmp_path,qtbot):
     from mechanical_project_namer.data import Database,Repository
     from mechanical_project_namer.ui.project_files_page import ProjectFilesPage
     db=Database(tmp_path/'data.db');db.migrate();page=ProjectFilesPage(Repository(db));qtbot.addWidget(page)
-    page.rows=[dict(extension='.pdf')];page.table.setRowCount(1);page.table.selectRow(0)
+    page.rows=[dict(extension='.step')];page.table.setRowCount(1);page.table.selectRow(0)
     page.preview_selected();assert '仅支持GLB' in page.status.text() and page.preview_window is None
 
 

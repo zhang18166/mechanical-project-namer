@@ -1,15 +1,15 @@
 # 机械项目命名助手 V1.7.1
 
-当前新增 **Phase 2A：离线GLB预览**，完整验收与范围见 [PHASE2A](docs/workbench/PHASE2A.md)。在本阶段独立工作树执行：
+当前新增 **Phase 2B：离线PDF预览**，完整验收、限制及真实样本统计见 [PHASE2B](docs/workbench/PHASE2B.md)；继承已验收的 [Phase 2A GLB预览](docs/workbench/PHASE2A.md)。在本阶段独立工作树执行：
 
 ```powershell
 .\scripts\setup_preview.ps1
-.\scripts\dev_preview.ps1
+.\scripts\dev_pdf.ps1
 ```
 
-使用“项目文件 → 本地预览”，不启动浏览器网站、不上传。默认Phase 2A开发配置与旧演示/正式数据分开。基础命名和文件清单不要求WebEngine，只有点击预览才加载；安装可选依赖后使用锁定的Qt/WebEngine 6.11栈。PDF、STEP/STL及原生SLD内嵌预览仍未实现，保留系统打开入口。本轮不发布新安装包或迁移正式数据。
+使用“项目文件 → 本地预览”查看PDF或GLB，不打开第三方网站、不上传。默认Phase 2B开发配置与2A/旧演示/正式数据分开。QtPdf按需在受限子进程加载，PDF不要求WebEngine；GLB延续本地WebEngine方案。基础命名和文件清单不要求预览初始化。STEP/STL及原生SLD内嵌预览仍未实现，保留系统打开入口。本轮不发布新安装包或迁移正式数据。
 
-本分支归档 V1.7.1 源码、Phase 0 隔离基础与 Phase 1 本地文件清单，应用版本仍为 1.7.1、数据库 Schema 12。阶段事实见 [PROGRESS](docs/workbench/PROGRESS.md)，需求、基线与计划见 [docs/workbench](docs/workbench/BASELINE.md)。历史 MSI 预览仍为 1.6.1；本次不构建安装包、不迁移生产数据、不进入 Phase 2。旧打包脚本含 1.6.1 固定元数据，未验收其用于当前版本。
+本分支继承公开 V1.7.1 源码、Phase 0 隔离基础与 Phase 1 本地文件清单，应用版本仍为 1.7.1、数据库 Schema 12。阶段事实见 [PROGRESS](docs/workbench/PROGRESS.md)，需求、基线与计划见 [docs/workbench](docs/workbench/BASELINE.md)。历史 MSI 预览仍为 1.6.1；本次不构建安装包、不迁移生产数据、不进入 Phase 2C。旧打包脚本含 1.6.1 固定元数据，未验收其用于当前版本。
 
 Windows 桌面工具，管理机械项目代号、模块和零件编号，支持名称复制、历史记录、SQLite 本地存储、CSV / Excel / PDF 导出、可选 AI 命名和 SOLIDWORKS 联动。
 

@@ -48,6 +48,7 @@ class ProjectFilesPage(QWidget):
         self.catalog = ProjectFileCatalog(repository)
         self.worker = None
         self.preview_window = None
+        self.pdf_window = None
         self.project_id = None
         self.rows = []
         self._projects = []
@@ -199,10 +200,19 @@ class ProjectFilesPage(QWidget):
 
     def preview_selected(self):
         row=self.selected_file()
-        if not row:self.status.setText('请先选择一个GLB文件。');return
-        if row['extension'].lower()!='.glb':
-            self.status.setText('本阶段仅支持GLB内嵌预览；该类型请使用“打开文件”。');return
+        if not row:self.status.setText('请先选择一个GLB或PDF文件。');return
+        extension=row['extension'].lower()
+        if extension not in ('.glb','.pdf'):
+            self.status.setText('目前仅支持GLB和PDF内嵌预览；该类型请使用“打开文件”。');return
         try:
+            if extension=='.pdf':
+                from .pdf_window import PdfDialog
+                if self.pdf_window is None:
+                    self.pdf_window=PdfDialog(self)
+                    self.pdf_window.destroyed.connect(lambda:setattr(self,'pdf_window',None))
+                self.pdf_window.show();self.pdf_window.raise_()
+                self.pdf_window.load_path(row['path'],row['name'])
+                return
             from .preview_window import PreviewDialog
             if self.preview_window is None:
                 self.preview_window=PreviewDialog(self)
@@ -216,10 +226,11 @@ class ProjectFilesPage(QWidget):
     def _preview_destroyed(self):self.preview_window=None
 
     @property
-    def preview_busy(self):return self.preview_window is not None and self.preview_window.busy
+    def preview_busy(self):return any(window is not None and window.busy for window in (self.preview_window,self.pdf_window))
 
     def close_preview(self):
         if self.preview_window is not None:self.preview_window.close()
+        if self.pdf_window is not None:self.pdf_window.close()
 
     def open_selected(self, directory=False, *, opener=None):
         row = self.selected_file()

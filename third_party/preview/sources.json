@@ -41,5 +41,25 @@
     "QtWebEngine": "6.11.2",
     "Chromium": "140.0.7339.225",
     "license": "PyQt bindings GPL-3.0-only; Qt and Chromium notices in installed official wheels; no Qt binaries redistributed"
+  },
+  "phase2b_pdf": {
+    "binding": {
+      "distribution": "PyQt6",
+      "version": "6.11.0",
+      "modules": [
+        "QtPdf",
+        "QtPdfWidgets"
+      ]
+    },
+    "runtime": {
+      "distribution": "PyQt6-Qt6",
+      "version": "6.11.2"
+    },
+    "qpdfview_probe": "4 page synthetic PDF displayed; MultiPage/FitInView verified",
+    "chosen_backend": "QtPdf native rasterization in memory-limited child process",
+    "qt_runtime_license_sha256": "6c671e2912ec69c0832f32066c0313cee5fdc3bbcbce237822e89f3da58edd4e",
+    "official_source": "https://github.com/qt/qtwebengine/tree/v6.11.2/src/pdf",
+    "licensing_reference": "https://doc.qt.io/qt-6.11/qtpdf-licensing.html",
+    "binary_redistributed": false
   }
 }

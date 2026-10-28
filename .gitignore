@@ -34,3 +34,4 @@ settings.json
 node_modules/
 .npm-cache/
 *.glb
+*.pdf
