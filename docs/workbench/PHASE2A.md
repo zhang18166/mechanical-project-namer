@@ -1,6 +1,6 @@
 # Phase 2A：Windows 客户端离线 GLB 预览验收
 
-2026-10-28，开发验收 **PASS（限定本文范围）**。基准为公开归档 `a8a557edb371ada974b8d4f0fc2212561582f168`，独立分支 `codex/mechanical-workbench-phase2a-preview`。应用版本保持1.7.1、数据库Schema保持12；没有迁移、安装包或Phase 2其余功能开发。GitHub同步另见PROGRESS，不能由本地通过推断推送成功。
+2026-10-28，开发验收 **PASS（限定本文范围）**。基准为公开归档 `a8a557edb371ada974b8d4f0fc2212561582f168`，独立分支 `codex/mechanical-workbench-phase2a-preview`，实现提交 `41e3da489b77c97cb515b753318ce85d8a7e8ecc`。应用版本保持1.7.1、数据库Schema保持12；没有迁移、安装包或Phase 2其余功能开发。GitHub同步另见PROGRESS，不能由本地通过推断推送成功。
 
 ## 已支持范围与启动
 
