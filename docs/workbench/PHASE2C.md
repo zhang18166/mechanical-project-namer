@@ -1,6 +1,6 @@
 # Phase 2C：STL / STEP 本地预览与稳定性验证
 
-2026-10-28，阶段结论 **PARTIAL**：STL和限定样本的STEP显示/操作通过，STEP仅在隔离开发模式开放；上游内核安全补丁覆盖、任意STEP兼容性及长期主进程内存保留尚不能作全面PASS。基于Phase 2B公开提交 `a31468bbf627a3cb9fb7ee573091100ccfef4c89`，独立分支 `codex/mechanical-workbench-phase2c-cad`。应用1.7.1、Schema12不变，无数据库迁移。开发及GitHub同步分别验收；Phase 0/1/2A/2B历史记录保留。
+2026-10-28，阶段结论 **PARTIAL**：STL和限定样本的STEP显示/操作通过，STEP仅在隔离开发模式开放；上游内核安全补丁覆盖、任意STEP兼容性及长期主进程内存保留尚不能作全面PASS。基于Phase 2B公开提交 `a31468bbf627a3cb9fb7ee573091100ccfef4c89`，独立分支 `codex/mechanical-workbench-phase2c-cad`，实现提交 `b6f9beeda238c6390dd24ed41e713f328e5a7611`。应用1.7.1、Schema12不变，无数据库迁移。开发及GitHub同步分别验收；Phase 0/1/2A/2B历史记录保留。
 
 ## 安装与运行
 
