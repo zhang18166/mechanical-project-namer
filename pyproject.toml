@@ -10,7 +10,8 @@ requires-python = ">=3.12,<3.13"
 license = {text = "GPL-3.0-only"}
 authors = [{name = "zhang18166"}]
 dependencies = [
-  "PyQt6==6.8.1",
+  "PyQt6==6.11.0",
+  "PyQt6-Qt6==6.11.2",
   "httpx==0.28.1",
   "keyring==25.6.0",
   "pywin32==312",
@@ -20,6 +21,7 @@ dependencies = [
 [project.optional-dependencies]
 test = ["pytest==8.3.5", "pytest-qt==4.4.0"]
 build = ["PyInstaller==6.12.0"]
+preview = ["PyQt6-WebEngine==6.11.0", "PyQt6-WebEngine-Qt6==6.11.2"]
 
 [project.scripts]
 mechanical-project-namer = "mechanical_project_namer.app:main"
@@ -30,3 +32,6 @@ include = ["mechanical_project_namer*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.setuptools.package-data]
+mechanical_project_namer = ["preview_assets/*.html", "preview_assets/*.js"]

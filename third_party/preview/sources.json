@@ -1,0 +1,45 @@
+{
+  "packages": [
+    {
+      "name": "online-3d-viewer",
+      "version": "0.18.0",
+      "url": "https://registry.npmjs.org/online-3d-viewer/-/online-3d-viewer-0.18.0.tgz",
+      "archive_sha256": "f4e92146195af364a52d88a00d1f5eba3f0669058b9fa7d41a207e504be3f904",
+      "license_member": "package/LICENSE.md",
+      "license_sha256": "1927cc1a53b4ee5a4fb8213b21c4ed5b2a412f5aa314fb8777edccc1f3e5749e",
+      "license": "MIT"
+    },
+    {
+      "name": "three",
+      "version": "0.176.0",
+      "url": "https://registry.npmjs.org/three/-/three-0.176.0.tgz",
+      "archive_sha256": "15dd83ec1efd1fa23554b560e670cc1fe260452a31924b56f15cb398f35d1c53",
+      "license_member": "package/LICENSE",
+      "license_sha256": "bfe119ea4fd413f5f7ca3fcd63adb0c4a073ed39daa2fe7d3e6b769e21272601",
+      "license": "MIT"
+    },
+    {
+      "name": "fflate",
+      "version": "0.8.3",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/fflate/0.8.3"
+    },
+    {
+      "name": "esbuild",
+      "version": "0.28.2",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/esbuild/0.28.2"
+    }
+  ],
+  "viewer_sha256": "cd991824128ff34fef2be336ea2baec884d0e7bbc040ad1ac232070ba2e4d535",
+  "build": "esbuild 0.28.2; npm ci with overrides.fflate=0.8.3; see preview-web/package-lock.json",
+  "security_note": "GHSA-px8p-9vwx-vf98: override fflate 0.8.2 with patched 0.8.3 and rebuild. npm audit: 0 vulnerabilities at validation.",
+  "python_stack": {
+    "PyQt6": "6.11.0",
+    "Qt": "6.11.2",
+    "PyQt6_WebEngine": "6.11.0",
+    "QtWebEngine": "6.11.2",
+    "Chromium": "140.0.7339.225",
+    "license": "PyQt bindings GPL-3.0-only; Qt and Chromium notices in installed official wheels; no Qt binaries redistributed"
+  }
+}

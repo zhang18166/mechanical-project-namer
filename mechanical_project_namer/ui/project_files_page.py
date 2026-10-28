@@ -47,6 +47,7 @@ class ProjectFilesPage(QWidget):
         self.repository = repository
         self.catalog = ProjectFileCatalog(repository)
         self.worker = None
+        self.preview_window = None
         self.project_id = None
         self.rows = []
         self._projects = []
@@ -75,8 +76,9 @@ class ProjectFilesPage(QWidget):
         self.rescan = QPushButton('重新扫描'); self.cancel_button = QPushButton('取消扫描')
         self.open_button = QPushButton('打开文件'); self.locate_button = QPushButton('定位文件')
         self.link_button = QPushButton('关联零件')
+        self.preview_button = QPushButton('本地预览')
         for button in (self.add_files, self.add_directory, self.rescan, self.cancel_button,
-                       self.open_button, self.locate_button, self.link_button): actions.addWidget(button)
+                       self.preview_button, self.open_button, self.locate_button, self.link_button): actions.addWidget(button)
         right_layout.addLayout(actions)
         self.table = QTableWidget(0, 8)
         self.table.setHorizontalHeaderLabels(['文件名称', '类型', '所属项目', '关联零件编号', '原始完整路径', '文件大小', '修改时间', '存在状态'])
@@ -105,6 +107,7 @@ class ProjectFilesPage(QWidget):
         self.open_button.clicked.connect(lambda: self.open_selected(False))
         self.locate_button.clicked.connect(lambda: self.open_selected(True))
         self.link_button.clicked.connect(self._associate)
+        self.preview_button.clicked.connect(self.preview_selected)
         self.table.doubleClicked.connect(lambda: self.open_selected(False))
         self._set_busy(False)
 
@@ -193,6 +196,30 @@ class ProjectFilesPage(QWidget):
     def selected_file(self):
         index = self.table.currentRow()
         return self.rows[index] if 0 <= index < len(self.rows) else None
+
+    def preview_selected(self):
+        row=self.selected_file()
+        if not row:self.status.setText('请先选择一个GLB文件。');return
+        if row['extension'].lower()!='.glb':
+            self.status.setText('本阶段仅支持GLB内嵌预览；该类型请使用“打开文件”。');return
+        try:
+            from .preview_window import PreviewDialog
+            if self.preview_window is None:
+                self.preview_window=PreviewDialog(self)
+                self.preview_window.destroyed.connect(lambda:self._preview_destroyed())
+            self.preview_window.show();self.preview_window.raise_()
+            self.preview_window.load_path(row['path'],row['name'])
+        except ImportError:
+            self.status.setText('未安装可选预览依赖，请运行 scripts/setup_preview.ps1；基础命名和文件功能仍可用。')
+        except Exception as exc:self.status.setText(f'无法启动本地预览：{exc}')
+
+    def _preview_destroyed(self):self.preview_window=None
+
+    @property
+    def preview_busy(self):return self.preview_window is not None and self.preview_window.busy
+
+    def close_preview(self):
+        if self.preview_window is not None:self.preview_window.close()
 
     def open_selected(self, directory=False, *, opener=None):
         row = self.selected_file()

@@ -1,0 +1,9 @@
+{
+  "name": "mechanical-workbench-offline-viewer",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {"build": "esbuild node_modules/online-3d-viewer/build/engine/o3dv.module.js --bundle --format=iife --global-name=OV --minify --outfile=../mechanical_project_namer/preview_assets/o3dv.min.js"},
+  "dependencies": {"online-3d-viewer": "0.18.0"},
+  "devDependencies": {"esbuild": "0.28.2"},
+  "overrides": {"fflate": "0.8.3"}
+}

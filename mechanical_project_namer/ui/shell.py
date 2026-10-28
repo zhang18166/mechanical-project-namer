@@ -295,6 +295,7 @@ class ApplicationShell:
         if getattr(self, "_quitting", False):
             return
         self._quitting = True
+        if getattr(self,'project_files_page',None) is not None:self.project_files_page.close_preview()
         for thread in (getattr(self, 'file_check_thread', None), getattr(getattr(self, 'file_sync_dialog', None), 'worker', None), getattr(getattr(self, 'project_files_page', None), 'worker', None)):
             if thread:
                 thread.cancel.set()
@@ -312,6 +313,9 @@ class ApplicationShell:
         self._finish_quit()
 
     def _finish_quit(self) -> None:
+        if getattr(self,'project_files_page',None) is not None and self.project_files_page.preview_busy:
+            QTimer.singleShot(50,self._finish_quit)
+            return
         # Keep the Qt event loop alive until workers have released their resources.
         if any(task.thread.isRunning() for task in self.ai_tasks.values()):
             QTimer.singleShot(50, self._finish_quit)

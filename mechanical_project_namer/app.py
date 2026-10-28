@@ -6,7 +6,7 @@ import os
 import sys
 import json
 
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QTimer, QCoreApplication, Qt
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon, QStyle
 
@@ -39,6 +39,8 @@ def main() -> int:
         from .solidworks.worker_entry import main as worker_main
 
         return worker_main(sys.argv[1:])
+    # Lightweight Qt setup only; WebEngine is imported on the first preview click.
+    QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
     configure_logging()
     app = QApplication(sys.argv)
     install_exception_hook()

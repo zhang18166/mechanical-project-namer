@@ -31,3 +31,6 @@ settings.json
 *.key
 *.p12
 *.pfx
+node_modules/
+.npm-cache/
+*.glb

@@ -1,0 +1,3 @@
+# Preserve generated third-party GLSL template text; audit its provenance/hash instead.
+mechanical_project_namer/preview_assets/o3dv.min.js text eol=lf -whitespace
+third_party/preview/* text eol=lf
