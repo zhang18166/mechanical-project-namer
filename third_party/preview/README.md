@@ -1,5 +1,17 @@
 # 离线查看组件来源与许可
 
+## Phase 2C：受控STEP / STL（2026-10-28）
+
+复用Online 3D Viewer0.18.0与现有Qt6.11栈，新增加固定的 [occt-import-js0.0.23](https://www.npmjs.com/package/occt-import-js/v/0.0.23)。官方npm元数据、tarball完整性和package-lock已核对；上游main显示0.0.24，但registry实际最新发布为0.0.23，不混称版本。客户端运行无需Node，安装验证使用既有Node24.16.0/npm11.13.0，没有全局升级。
+
+源库：[官方源码](https://github.com/kovacsv/occt-import-js/tree/c2148e54b456b571238d35cac037d304053d64b2)，包含构建入口；对应OCCT子模块固定为 `d2abb6d844231cb8f29be6894440874a4700e4a5`。两个运行文件JS/WASM从官方npm安装到忽略目录并按SHA-256验证后才提供精确路由；Git不包含WASM、node_modules、测试模型或DLL。原LGPL2.1文本分别保留为occt-import-js-LICENSE.txt和OCCT-LICENSE.txt；组件不被重新许可，与本项目GPLv3的使用保持原有修改/再分发义务。将来分发二进制时还须核对对应源码、构建和完整第三方通知，本轮不发布安装包。
+
+实际安全依据：[CVE-2026-42481](https://nvd.nist.gov/vuln/detail/CVE-2026-42481)、[上游解析加固PR1514](https://github.com/Open-Cascade-SAS/OCCT/pull/1514)。该PR于2026-09-01合并；候选原生OCCT8.0.1 tag早于该合并，GitHub compare显示未包含它，不能因wheel较新就认为已修复。客户端没有采用原生OCP读文件；固定WASM也不作“所有内核漏洞已修复”的声明。npm审计0项不覆盖原生OCCT安全问题；防护是WASM线性内存/虚拟文件系统、WebWorker终止、Windows进程内存预算、超时、词法/几何复杂度和无外网/无主机路径能力边界，细节与风险见PHASE2C。
+
+可选fixture写入器：官方PyPI `cadquery-ocp-novtk8.0.1.1.0`及同版proxy，SHA-256锁定于requirements-cad-fixtures.lock。绑定源 [CadQuery/OCP](https://github.com/CadQuery/OCP)、[官方构建流程](https://github.com/CadQuery/ocp-build-system) 为Apache-2.0，所含OCCT仍按其原LGPL条款。该可选工具只在独立测试生成进程创建我们的形体/STEP，不读取任何输入CAD；不作为客户端依赖、后备解析路线或安装包内容。没有自行编写CAD内核或执行SOLIDWORKS转换。
+
+资源、许可的确切哈希与来源保留在sources.json。STL是受限三角数据读取和法向重算，随后由原查看器渲染；STEP几何、曲面与网格化由OCCT/WASM完成。真实图纸及截图均不进入Git。
+
 ## Phase 2B：QtPdf（2026-10-28）
 
 PDF后端使用已锁定的PyQt6 6.11.0 / PyQt6-Qt6 6.11.2，运行时未新增或升级第三方库。本地wheel RECORD核实QtPdf.pyd、QtPdfWidgets.pyd属于PyQt6，Qt6Pdf/Qt6PdfWidgets DLL属于PyQt6-Qt6；PDF不要求WebEngine、Node或浏览器资源。

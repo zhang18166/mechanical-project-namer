@@ -31,3 +31,5 @@ Python、libffi、OpenSSL、SQLite 及 Microsoft 运行库保留各自条款。Q
 本清单不替代随包第三方完整许可文本。本项目自有代码采用 GPL-3.0-only，第三方组件不会因此被重新许可。
 
 Phase 2B离线PDF使用现有PyQt6/Qt6的QtPdf（PDFium）模块，未捆绑新的二进制或生成安装包。实际锁定版本、QtPdfWidgets兼容验证、许可及测试工具归属见 [预览组件记录](third_party/preview/README.md)；本机PDF不进入仓库、不被重新许可。
+
+Phase 2C增加occt-import-js0.0.23（LGPL2.1）本地WASM能力，代码、许可和安全限制见同一组件记录。WASM与可选OCP测试写入器均不提交二进制，不改变既有组件许可。本轮没有安装包、真实CAD或源工程分发。

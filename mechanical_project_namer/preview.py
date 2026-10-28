@@ -187,12 +187,21 @@ class ResourceServer:
 
     def publish(self, generation, model):
         prefix = f'/{self.secret}/{generation}/'
-        html = (ASSETS/'index.html').read_text(encoding='utf-8').replace('__GENERATION__', str(generation))
+        format=getattr(model,'format','glb')
+        html = (ASSETS/'index.html').read_text(encoding='utf-8').replace('__GENERATION__', str(generation)).replace('__FORMAT__',format)
+        if format=='step':
+            html=html.replace("script-src 'self';","script-src 'self' 'wasm-unsafe-eval';").replace("worker-src 'none'","worker-src 'self'")
         with self.lock:
             self.routes = {prefix+'index.html': ('text/html; charset=utf-8', html.encode()),
                            prefix+'app.js': ('application/javascript', (ASSETS/'app.js').read_bytes()),
                            prefix+'o3dv.min.js': ('application/javascript', (ASSETS/'o3dv.min.js').read_bytes()),
                            prefix+'model.glb': ('model/gltf-binary', model.data)}
+            if format=='step':
+                from .cad import verify_step_assets
+                self.routes.pop(prefix+'model.glb')
+                self.routes[prefix+'input.step']=('application/octet-stream',model.data)
+                self.routes[prefix+'cad-worker.js']=('application/javascript',(ASSETS/'cad-worker.js').read_bytes())
+                for name,data in verify_step_assets().items():self.routes[prefix+name]=('application/wasm' if name.endswith('.wasm') else 'application/javascript',data)
         return self.origin+prefix+'index.html'
 
     def allowed(self, url):

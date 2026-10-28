@@ -202,9 +202,14 @@ class ProjectFilesPage(QWidget):
         row=self.selected_file()
         if not row:self.status.setText('请先选择一个GLB或PDF文件。');return
         extension=row['extension'].lower()
-        if extension not in ('.glb','.pdf'):
-            self.status.setText('目前仅支持GLB和PDF内嵌预览；该类型请使用“打开文件”。');return
+        if extension not in ('.glb','.pdf','.stl','.step','.stp'):
+            self.status.setText('目前仅支持GLB、PDF、STL和STEP内嵌预览；该类型请使用“打开文件”。');return
         try:
+            if extension in ('.step','.stp'):
+                from ..development import is_development
+                if not is_development():
+                    self.status.setText('STEP本阶段仅在隔离开发模式开放，请使用 scripts/dev_cad.ps1；原文件仍可使用“打开文件”。')
+                    return
             if extension=='.pdf':
                 from .pdf_window import PdfDialog
                 if self.pdf_window is None:

@@ -1,0 +1,3 @@
+# Optional synthetic STEP WRITER only. Never imported by the client or used to read input.
+cadquery-ocp-novtk==8.0.1.1.0 --hash=sha256:af3ecbeaf28ee4df17a07c8a3b88e3009bb820c7f4c7d7d1732745d064c96781
+cadquery-ocp-proxy==8.0.1.1.0 --hash=sha256:98c71bb60cfb651afe179b134ab88580fd75384fce0cc6d633f727002cd18abd

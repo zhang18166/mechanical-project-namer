@@ -4,6 +4,7 @@ import json
 import os
 from threading import Event
 from urllib.parse import urlsplit
+from pathlib import Path
 
 from PyQt6.QtCore import QThread, QTimer, QUrl, Qt, pyqtSignal
 from PyQt6.QtWidgets import QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
@@ -47,7 +48,12 @@ class ReadWorker(QThread):
     def __init__(self,generation,path):
         super().__init__();self.generation=generation;self.path=path;self.cancel=Event()
     def run(self):
-        try:self.ready.emit(self.generation,read_glb(self.path,self.cancel))
+        try:
+            if Path(self.path).suffix.lower()=='.glb':model=read_glb(self.path,self.cancel)
+            else:
+                from ..cad import read_cad_isolated
+                model=read_cad_isolated(self.path,self.cancel)
+            self.ready.emit(self.generation,model)
         except Exception as exc:self.failed.emit(self.generation,f'{type(exc).__name__}：{exc}')
 
 
@@ -59,10 +65,11 @@ class PreviewDialog(QDialog):
             raise PreviewError('检测到不安全的WebEngine环境参数；拒绝启动预览。')
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
-        self.setWindowTitle('本地三维预览 · GLB');self.resize(1080,760)
+        self.setWindowTitle('本地三维预览 · GLB / STL / STEP');self.resize(1080,760)
         self.generation=0;self.workers=[];self.closing=False;self.disposed=False
         self.diagnostics={};self.snapshot=None
         self.pending=None
+        self.render_budget=None;self.render_budget_pid=None
         self.server=ResourceServer()
         layout=QVBoxLayout(self)
         self.name=QLabel();self.name.setTextFormat(Qt.TextFormat.PlainText);self.name.setWordWrap(True);layout.addWidget(self.name)
@@ -88,7 +95,7 @@ class PreviewDialog(QDialog):
         self.page.message.connect(self._message)
         self.page.renderProcessTerminated.connect(lambda *_:self._error(self.generation,'渲染进程结束，请关闭后重开。'))
         self.timeout=QTimer(self);self.timeout.setSingleShot(True)
-        self.timeout.timeout.connect(lambda:self._error(self.generation,'预览超过20秒，请减小模型或检查WebGL。'))
+        self.timeout.timeout.connect(lambda:self._error(self.generation,'预览超时，请简化模型后重试或检查WebGL。'))
         hint=QLabel('仅供查看，不是加工尺寸依据。左键旋转 · 滚轮缩放 · 右键平移。仅从本地读取，不上传。')
         hint.setWordWrap(True);layout.addWidget(hint)
 
@@ -98,9 +105,9 @@ class PreviewDialog(QDialog):
     def load_path(self,path,name=None):
         self.cancel_load();self.closing=False
         self.name.setText(f'{name or path}\n来源：{path}')
-        self.status.setText('正在后台检查GLB及内嵌资源…')
+        self.status.setText('正在隔离检查模型及依赖…')
         self.pending=(self.generation,path)
-        self.timeout.start(20000);self._start_pending()
+        self.timeout.start(45000 if Path(path).suffix.lower() in ('.step','.stp') else 20000);self._start_pending()
 
     def _start_pending(self):
         if self.workers or self.pending is None or self.closing:return
@@ -131,9 +138,22 @@ class PreviewDialog(QDialog):
     def _message(self,data):
         if data.get('generation')!=self.generation or self.closing:return
         if data.get('state')=='error':self._error(self.generation,data.get('message','加载失败'));return
+        if data.get('state')=='cad-ready' and getattr(self.snapshot,'format','')=='step':
+            try:
+                from ..pdf import ProcessBudget
+                pid=int(self.page.renderProcessPid())
+                if pid!=self.render_budget_pid:
+                    if self.render_budget:self.render_budget.close()
+                    self.render_budget=ProcessBudget(pid,1024);self.render_budget_pid=pid
+                self.timeout.start(30000);self.page.runJavaScript('window.startCadPreview()')
+            except Exception as exc:self._error(self.generation,'无法建立STEP资源隔离：'+str(exc))
+            return
         if data.get('state')=='rendered' and data.get('triangles',0)>0:
             self.timeout.stop();self.diagnostics=data
             self.status.setText(f"模型已显示 · {data['triangles']} 个绘制三角面 · 首帧 {data['loadMs']:.0f} ms")
+            metadata=getattr(self.snapshot,'metadata',{})
+            if metadata.get('source')=='STL':self.status.setText(self.status.text()+f" · STL单位未知；重算法向{metadata['normal_repairs']}面，略去退化{metadata['degenerate_omitted']}面")
+            elif metadata.get('source')=='STEP':self.status.setText(self.status.text()+f" · {metadata['protocol']} · {data.get('cad',{}).get('parts',0)}实体 · 标准化毫米；三角网格不等于精确CAD测量")
 
     def command(self,command):
         if command in ('fit','iso','front','top') and self.diagnostics:
@@ -150,4 +170,5 @@ class PreviewDialog(QDialog):
         if not self.disposed:
             self.disposed=True;self.server.close();self.view.stop()
             self.page.deleteLater();self.profile.deleteLater()
+            if self.render_budget:self.render_budget.close();self.render_budget=None
         event.accept()

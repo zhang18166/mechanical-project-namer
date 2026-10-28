@@ -3,6 +3,19 @@
 const generation = Number(document.body.dataset.generation);
 const started = performance.now();
 let embedded = null;
+let cadWorker=null,cadDetails=null;
+window.startCadPreview=function(){
+    if(cadWorker)return;
+    cadWorker=new Worker(new URL('cad-worker.js',location.href));
+    cadWorker.onerror=()=>fail('STEP工作线程结束，可能超限或文件损坏。');
+    cadWorker.onmessage=event=>{
+        if(event.data.error){fail(event.data.error);cadWorker.terminate();cadWorker=null;return;}
+        const {data,...details}=event.data;cadDetails=details;
+        cadWorker.terminate();cadWorker=null;
+        embedded.LoadModelFromFileList([new File([data],'display.glb')]);
+    };
+    cadWorker.postMessage({});
+};
 function report(value) { console.info('MPN_PREVIEW:' + JSON.stringify({generation, ...value})); }
 function fail(message) { document.getElementById('error').textContent=message; report({state:'error', message}); }
 window.previewCommand = function(command) {
@@ -27,6 +40,7 @@ window.previewDiagnostics = function() {
         version:gl.getParameter(gl.VERSION), width:gl.drawingBufferWidth,height:gl.drawingBufferHeight};
 };
 function dispose() {
+    if(cadWorker){cadWorker.terminate();cadWorker=null;}
     if (!embedded) return;
     const v=embedded.GetViewer();v.Clear();v.renderer.dispose();v.renderer.forceContextLoss();embedded=null;
 }
@@ -43,10 +57,11 @@ try {
             requestAnimationFrame(()=>requestAnimationFrame(()=>{
                 embedded.GetViewer().Render();const d=previewDiagnostics();
                 if (!d || d.drawCalls<1 || d.triangles<1) {fail('模型没有产生可见绘制，请检查WebGL。');return;}
-                report({state:'rendered',loadMs:performance.now()-started,meshes:embedded.GetModel().MeshCount(),...d});
+                report({state:'rendered',loadMs:performance.now()-started,meshes:embedded.GetModel().MeshCount(),cad:cadDetails,...d});
             }));
         },
         onModelLoadFailed:()=>fail('模型解析失败，请使用有效的无扩展GLB。')
     });
-    embedded.LoadModelFromUrlList([new URL('model.glb',location.href).href]);
+    if(document.body.dataset.format==='step')report({state:'cad-ready'});
+    else embedded.LoadModelFromUrlList([new URL('model.glb',location.href).href]);
 } catch(error) { fail('WebGL初始化或模型载入失败：'+error.message); }

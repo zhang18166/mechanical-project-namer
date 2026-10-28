@@ -68,7 +68,7 @@ def frames(buffer):
 
 class ProcessBudget:
     """Windows job: 512 MiB per native parser process; kill on owner handle close."""
-    def __init__(self, pid):
+    def __init__(self, pid, memory_mib=512):
         self.handle = None
         if os.name != 'nt':
             return
@@ -91,7 +91,7 @@ class ProcessBudget:
         kernel.CloseHandle.argtypes = [W.HANDLE]
         job = kernel.CreateJobObjectW(None, None)
         config = Extended(); config.basic.flags = 0x2000 | 0x100  # KILL_ON_JOB_CLOSE | PROCESS_MEMORY
-        config.processMemory = 512 * 1024 * 1024
+        config.processMemory = memory_mib * 1024 * 1024
         process = kernel.OpenProcess(0x100 | 1, False, int(pid))
         success = job and process and kernel.SetInformationJobObject(job, 9, C.byref(config), C.sizeof(config)) and kernel.AssignProcessToJobObject(job, process)
         if process: kernel.CloseHandle(process)

@@ -1,0 +1,6 @@
+{
+  "name": "mechanical-workbench-offline-step",
+  "version": "0.0.0",
+  "private": true,
+  "dependencies": {"occt-import-js": "0.0.23"}
+}

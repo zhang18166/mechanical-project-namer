@@ -61,5 +61,26 @@
     "official_source": "https://github.com/qt/qtwebengine/tree/v6.11.2/src/pdf",
     "licensing_reference": "https://doc.qt.io/qt-6.11/qtpdf-licensing.html",
     "binary_redistributed": false
+  },
+  "phase2c_cad": {
+    "runtime_package": "occt-import-js",
+    "version": "0.0.23",
+    "npm_registry": "https://registry.npmjs.org",
+    "npm_git_head": "c2148e54b456b571238d35cac037d304053d64b2",
+    "occt_submodule": "d2abb6d844231cb8f29be6894440874a4700e4a5",
+    "license": "LGPL-2.1",
+    "asset_sha256": {
+      "occt-import-js.js": "3fb44ce11d00611f9b3f3c5775d520ebab48930c1f08279b7b1316f05f0d3379",
+      "occt-import-js.wasm": "33391fc9d94ea5c869a6718488bf0a9a464222bac9bdc764dfe1690cef281952"
+    },
+    "license_sha256": {
+      "occt-import-js-LICENSE.txt": "20c17d8b8c48a600800dfd14f95d5cb9ff47066a9641ddeab48dc54aec96e331",
+      "OCCT-LICENSE.txt": "e237fa56668030e928551ddd60f05df5fe957f75eab874bbd017e085ed722e7c"
+    },
+    "binary_committed": false,
+    "native_client_parser": false,
+    "optional_fixture_writer": "cadquery-ocp-novtk 8.0.1.1.0 + matching proxy; never used as an input reader",
+    "upstream_security_review": "https://github.com/Open-Cascade-SAS/OCCT/pull/1514",
+    "security_patch_included_claim": false
   }
 }

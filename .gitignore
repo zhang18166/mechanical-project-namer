@@ -35,3 +35,15 @@ node_modules/
 .npm-cache/
 *.glb
 *.pdf
+*.stl
+*.STL
+*.step
+*.STEP
+*.stp
+*.STP
+*.sldprt
+*.SLDPRT
+*.sldasm
+*.SLDASM
+*.slddrw
+*.SLDDRW
