@@ -1,6 +1,6 @@
 # Phase 2B：Windows 客户端离线 PDF 工程图预览
 
-2026-10-28，开发验收 **PASS（本文限定范围）**。基于已公开的 Phase 2A `98c48054b80e4119129bd7f5b2720a87861cfc8c`，独立分支 `codex/mechanical-workbench-phase2b-pdf`；应用1.7.1、Schema12均不变。GitHub同步独立记录于PROGRESS，不由本地验收推断推送成功。Phase 0/1/2A历史报告保留。
+2026-10-28，开发验收 **PASS（本文限定范围）**。基于已公开的 Phase 2A `98c48054b80e4119129bd7f5b2720a87861cfc8c`，独立分支 `codex/mechanical-workbench-phase2b-pdf`，实现提交 `60a62e28c69ffa950035e584415046f9f4020fa1`；应用1.7.1、Schema12均不变。GitHub同步独立记录于PROGRESS，不由本地验收推断推送成功。Phase 0/1/2A历史报告保留。
 
 ## 启动与功能
 
