@@ -80,6 +80,7 @@ class ApplicationShell:
         self._records_cache_project = None
         self.file_check_thread = None
         self.file_sync_dialog = None
+        self.project_files_page = None
         self._last_checked_project = None
         self.credential_store = CredentialStore()
         self.ai_threads: set[QThread] = set()
@@ -294,7 +295,7 @@ class ApplicationShell:
         if getattr(self, "_quitting", False):
             return
         self._quitting = True
-        for thread in (getattr(self, 'file_check_thread', None), getattr(getattr(self, 'file_sync_dialog', None), 'worker', None)):
+        for thread in (getattr(self, 'file_check_thread', None), getattr(getattr(self, 'file_sync_dialog', None), 'worker', None), getattr(getattr(self, 'project_files_page', None), 'worker', None)):
             if thread:
                 thread.cancel.set()
         for task in tuple(self.ai_tasks.values()):
@@ -315,7 +316,7 @@ class ApplicationShell:
         if any(task.thread.isRunning() for task in self.ai_tasks.values()):
             QTimer.singleShot(50, self._finish_quit)
             return
-        if any(thread and thread.isRunning() for thread in (getattr(self, 'file_check_thread', None), getattr(getattr(self, 'file_sync_dialog', None), 'worker', None))):
+        if any(thread and thread.isRunning() for thread in (getattr(self, 'file_check_thread', None), getattr(getattr(self, 'file_sync_dialog', None), 'worker', None), getattr(getattr(self, 'project_files_page', None), 'worker', None))):
             QTimer.singleShot(50, self._finish_quit)
             return
         self.main_window.allow_close = True
@@ -345,6 +346,7 @@ class ApplicationShell:
         main.csv_export_requested.connect(self._export_csv)
         main.record_export_requested.connect(self._export_records)
         main.file_sync_requested.connect(self._open_file_sync)
+        main.project_files_requested.connect(self._show_project_files)
         main.settings_page.save_requested.connect(self._save_settings_values)
         main.ai_requested.connect(self._request_ai)
         main.plan_history_requested.connect(self._show_plan_history)
@@ -371,6 +373,14 @@ class ApplicationShell:
         self.solidworks_controller.completed.connect(self._on_solidworks_completed)
         self.solidworks_controller.failed.connect(self._on_solidworks_failed)
         self.solidworks_controller.busy_changed.connect(self._set_solidworks_busy)
+
+    def _show_project_files(self) -> None:
+        if self.project_files_page is None:
+            from .project_files_page import ProjectFilesPage
+            self.project_files_page = ProjectFilesPage(self.repository, self.main_window)
+            self.main_window.pages.addWidget(self.project_files_page)
+        self.project_files_page.load_projects(self.current_project_id)
+        self.main_window.pages.setCurrentWidget(self.project_files_page)
 
     def _project_action(self, action: str, project_id: int) -> None:
         try:

@@ -180,7 +180,8 @@ def test_schema10_upgrade_preserves_links_ids_reservations_and_rollback_backup(t
         assert c.execute('PRAGMA foreign_key_check').fetchall() == []
         assert c.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
         assert c.execute('SELECT COUNT(*) FROM number_reservations').fetchone()[0] == 1
-    assert list((tmp_path / 'backups/database').glob('*pre_schema11*.db'))
+    from mechanical_project_namer.data.database import SCHEMA_VERSION
+    assert list((tmp_path / 'backups/database').glob(f'*pre_schema{SCHEMA_VERSION}*.db'))
 
 
 def test_simple_ui_enter_single_generate_manual_preview_and_no_notes_loss(simple, qtbot):

@@ -1,6 +1,6 @@
 # 机械项目命名助手 V1.7.1
 
-本分支归档 V1.7.1 源码与 Phase 0 隔离开发基础，应用版本仍为 1.7.1、数据库 Schema 11。阶段事实见 [PROGRESS](docs/workbench/PROGRESS.md)，需求、基线与计划见 [docs/workbench](docs/workbench/BASELINE.md)。历史 MSI 预览仍为 1.6.1；本次不构建安装包、不迁移生产数据、不进入 Phase 2。旧打包脚本含 1.6.1 固定元数据，未验收其用于当前版本。
+本分支归档 V1.7.1 源码、Phase 0 隔离基础与 Phase 1 本地文件清单，应用版本仍为 1.7.1、数据库 Schema 12。阶段事实见 [PROGRESS](docs/workbench/PROGRESS.md)，需求、基线与计划见 [docs/workbench](docs/workbench/BASELINE.md)。历史 MSI 预览仍为 1.6.1；本次不构建安装包、不迁移生产数据、不进入 Phase 2。旧打包脚本含 1.6.1 固定元数据，未验收其用于当前版本。
 
 Windows 桌面工具，管理机械项目代号、模块和零件编号，支持名称复制、历史记录、SQLite 本地存储、CSV / Excel / PDF 导出、可选 AI 命名和 SOLIDWORKS 联动。
 
@@ -35,6 +35,12 @@ py -3.12 -m venv .venv
 开发数据默认在 `%LOCALAPPDATA%\MechanicalWorkbenchDev\phase0`；可用 `-DevRoot <新的仓库外专用目录>` 指定另一份配置。开发模式隔离数据、设置、导出、日志、缓存及单实例标识，禁用真实 AI、Windows 凭据、SOLIDWORKS 与全局快捷键；只使用虚构数据。`-Smoke` 打开真实窗口并生成仓库外报告后退出。此模式不是操作系统访问沙箱，不将项目指向真实 CAD 或网络共享。
 
 测试默认使用独立配置并阻止真实网络、凭据、COM 和热键；完整 JUnit 保存在仓库外。本分支沿用公开仓库的 Qt 标准图标，不上传本机图标资源。
+
+## 项目文件（Phase 1）
+
+从首页上方“项目文件”进入。左侧选择已有项目，右侧添加本地文件或目录并后台扫描；支持搜索、类型筛选、取消、重新扫描、关联已有零件、打开和定位。复用原项目身份，不占用编号、不改名/移动/删除源文件。
+
+识别 SLDPRT/SLDASM/SLDDRW、STEP/STP、STL、GLB、PDF，仅登记扩展名、路径和元数据，不解析或内嵌预览。每批限制为128个来源、10,000项、15秒、32层，拒绝链接、UNC/映射网络盘和磁盘根。只使用隔离数据库和虚构文件；取消需等待当前系统I/O返回。
 
 ## 使用
 

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from ..paths import database_path
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_meta (
@@ -97,6 +97,26 @@ CREATE TABLE IF NOT EXISTS record_files (
     mtime_ns INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_record_files_record ON record_files(record_id);
+CREATE TABLE IF NOT EXISTS project_files (
+    file_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    record_id INTEGER REFERENCES drawing_records(id) ON DELETE SET NULL,
+    association_manual INTEGER NOT NULL DEFAULT 0,
+    path TEXT NOT NULL, path_key TEXT NOT NULL,
+    name TEXT NOT NULL, extension TEXT NOT NULL,
+    file_size INTEGER NOT NULL DEFAULT 0, mtime_ns INTEGER NOT NULL DEFAULT 0,
+    state TEXT NOT NULL CHECK(state IN ('present','missing','unreadable','blocked')),
+    error TEXT NOT NULL DEFAULT '', checked_at TEXT NOT NULL,
+    UNIQUE(project_id, path_key)
+);
+CREATE INDEX IF NOT EXISTS idx_project_files_project ON project_files(project_id, extension, name);
+CREATE TABLE IF NOT EXISTS project_file_sources (
+    source_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    path TEXT NOT NULL, path_key TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK(kind IN ('file','directory')),
+    UNIQUE(project_id, path_key)
+);
 CREATE INDEX IF NOT EXISTS idx_projects_last_used ON projects(archived, last_used_at DESC);
 CREATE TABLE IF NOT EXISTS project_modules (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -477,7 +497,8 @@ class Database:
                     """INSERT INTO part_sequence_counters(project_id,module_code,part_type,next_sequence,updated_at)
                        VALUES (?,?,?,?,?)
                        ON CONFLICT(project_id,module_code,part_type) DO UPDATE SET
-                       next_sequence=MAX(part_sequence_counters.next_sequence, excluded.next_sequence), updated_at=excluded.updated_at""",
+                       next_sequence=MAX(part_sequence_counters.next_sequence, excluded.next_sequence), updated_at=excluded.updated_at
+                       WHERE excluded.next_sequence > part_sequence_counters.next_sequence""",
                     (row["project_id"], row["module_code"], row["part_type"], next_sequence, now),
                 )
         self._upgrade_record_identity_limit()

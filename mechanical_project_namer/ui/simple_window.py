@@ -4,7 +4,7 @@
 """Compact daily workflow. Existing tools remain reachable from the More menu."""
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QIntValidator
 from PyQt6.QtWidgets import (
     QComboBox, QDialog, QDialogButtonBox, QFormLayout, QFrame, QHBoxLayout,
@@ -20,6 +20,7 @@ from ..numbering.simple import SIMPLE_TYPE, full_name
 
 class SimpleMainWindow(MainWindow):
     simple_mode = True
+    project_files_requested = pyqtSignal()
 
     def __init__(self, settings):
         self._simple_project = None
@@ -41,6 +42,9 @@ class SimpleMainWindow(MainWindow):
         self.home_button.clicked.connect(lambda: self.show_page(1))
         bar.addWidget(self.home_button)
         bar.addStretch()
+        self.project_files_button = QPushButton('项目文件')
+        self.project_files_button.clicked.connect(self.project_files_requested.emit)
+        bar.addWidget(self.project_files_button)
         more = QPushButton('更多')
         self.more_button = more
         menu = QMenu(more)
