@@ -118,16 +118,16 @@ class SnapshotsDialog(QDialog):
 
     def update_summary(self,*_):
         indexes=[i for i in range(len(self.file_rows)) if self.files.item(i,0).checkState()==Qt.CheckState.Checked]
-        roles={self.files.cellWidget(i,3).currentData() for i in indexes};missing=sum(self.file_rows[i]['state']!='present' for i in indexes)
+        roles={(self.files.cellWidget(i,3).currentData(),Path(self.file_rows[i]['path']).suffix.lower()) for i in indexes};missing=sum(self.file_rows[i]['state']!='present' for i in indexes)
         self.summary.setText(f"索引选中{len(indexes)}项 / {sum(self.file_rows[i]['file_size'] for i in indexes):,}字节；不可用{missing}项（创建时重新检查）。"+
-            ('没有GLB预览副本。' if 'preview' not in roles else '')+('没有PDF查看副本。' if 'drawing' not in roles else '')+'装配依赖未验证；预览对应未验证。')
+            ('没有GLB预览副本。' if ('preview','.glb') not in roles else '')+('没有PDF查看副本。' if ('drawing','.pdf') not in roles else '')+'装配依赖未验证；预览对应未验证。')
 
     def refresh(self,*_):
         self.title.setText('项目：'+self.repository.get_project(self.project_id).name+' · 稳定ID '+str(self.project_id))
         self.rows=self.service.history(self.project_id);self.history.setRowCount(len(self.rows))
         for i,r in enumerate(self.rows):
-            roles={f['role'] for f in json.loads(r['request_json'])['files']}
-            extra=(' 无GLB预览。' if 'preview' not in roles else '')+(' 无PDF副本。' if 'drawing' not in roles else '')
+            roles={(f['role'],Path(f['relative_path']).suffix.lower()) for f in json.loads(r['request_json'])['files']}
+            extra=(' 无GLB预览。' if ('preview','.glb') not in roles else '')+(' 无PDF副本。' if ('drawing','.pdf') not in roles else '')
             for col,text in enumerate((r['label'],STATES.get(r['state'],r['state']),INTEGRITY.get(r['integrity'],r['integrity']),'未验证 / 未验证',(r['error'] or r['note'])+extra)):
                 item=QTableWidgetItem(text);item.setToolTip(text);self.history.setItem(i,col,item)
         self.jobs=self.service.restores(self.project_id);self.restores.clear()

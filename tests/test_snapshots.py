@@ -369,3 +369,15 @@ def test_retry_retains_failure_and_attempt_provenance(env):
     assert any('FICTIONAL copy interruption' in e['details'] for e in events)
     assert sum('stage_name' in e['details'] for e in events)==2
     assert events[0]['state']=='complete'
+
+
+def test_role_labels_do_not_pretend_glb_or_pdf_exists(env,qtbot):
+    from mechanical_project_namer.ui.snapshots_dialog import SnapshotsDialog
+    s,r,p,w,files,choices=env
+    for c in choices:c['role']='preview' if c==choices[0] else 'drawing'
+    t=s.prepare(p.id,w,choices,'V1');s.run(t)
+    dialog=SnapshotsDialog(r,p.id,store=s.store);qtbot.addWidget(dialog)
+    for i in range(len(dialog.file_rows)):
+        combo=dialog.files.cellWidget(i,3);combo.setCurrentIndex(combo.findData('preview' if i==0 else 'drawing'))
+    assert '没有GLB' in dialog.summary.text() and '没有PDF' in dialog.summary.text()
+    assert '无GLB' in dialog.history.item(0,4).text() and '无PDF' in dialog.history.item(0,4).text()
