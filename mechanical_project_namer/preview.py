@@ -7,6 +7,7 @@ import stat
 import struct
 import threading
 from collections import deque
+import weakref
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -139,6 +140,60 @@ def read_glb(value, cancel=None):
     return ModelSnapshot(data, triangles, len(data))
 
 
+class _ResourceHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        owner = self.server.owner()
+        if owner is None:
+            self.send_error(404); return
+        with owner.lock:
+            resource = owner.routes.get(self.path) if self.headers.get('Host') == owner.authority else None
+            owner.requests.append(dict(path=self.path, allowed=resource is not None))
+        if resource is None:
+            self.send_error(404); return
+        mime, payload = resource
+        self.send_response(200)
+        self.send_header('Content-Type', mime)
+        self.send_header('Content-Length', str(len(payload)))
+        self.send_header('Cache-Control', 'no-store')
+        self.send_header('X-Content-Type-Options', 'nosniff')
+        self.end_headers()
+        try: self.wfile.write(payload)
+        except (BrokenPipeError, ConnectionResetError): pass
+
+    def log_message(self, *_args): pass
+
+
+class _BoundedServer(ThreadingHTTPServer):
+    daemon_threads = True
+    request_queue_size = 8
+
+    def __init__(self, owner):
+        self.owner = weakref.ref(owner)
+        self.slots = threading.BoundedSemaphore(8)
+        super().__init__(('127.0.0.1', 0), _ResourceHandler)
+
+    def get_request(self):
+        connection, address = super().get_request(); connection.settimeout(5)
+        return connection, address
+
+    def process_request(self, request, address):
+        if not self.slots.acquire(blocking=False): request.close(); return
+        try: super().process_request(request, address)
+        except BaseException: self.slots.release(); raise
+
+    def process_request_thread(self, request, address):
+        try: super().process_request_thread(request, address)
+        finally: self.slots.release()
+
+
+def _stop_server(http, closed):
+    try:
+        http.shutdown()
+        http.server_close()
+    finally:
+        closed.set()
+
+
 class ResourceServer:
     """Exact in-memory routes only. Never accepts a filesystem path from HTTP."""
     def __init__(self):
@@ -146,40 +201,9 @@ class ResourceServer:
         self.routes = {}
         self.requests = deque(maxlen=256)
         self.lock = threading.Lock()
-        owner = self
-        class Handler(BaseHTTPRequestHandler):
-            def do_GET(self):
-                with owner.lock:
-                    resource = owner.routes.get(self.path) if self.headers.get('Host') == owner.authority else None
-                    owner.requests.append(dict(path=self.path, allowed=resource is not None))
-                if resource is None:
-                    self.send_error(404); return
-                mime, payload = resource
-                self.send_response(200)
-                self.send_header('Content-Type', mime)
-                self.send_header('Content-Length', str(len(payload)))
-                self.send_header('Cache-Control', 'no-store')
-                self.send_header('X-Content-Type-Options', 'nosniff')
-                self.end_headers()
-                try: self.wfile.write(payload)
-                except (BrokenPipeError, ConnectionResetError): pass
-            def log_message(self, *_args): pass
-        class BoundedServer(ThreadingHTTPServer):
-            daemon_threads=True
-            request_queue_size=8
-            slots=threading.BoundedSemaphore(8)
-            def get_request(self):
-                connection,address=super().get_request();connection.settimeout(5)
-                return connection,address
-            def process_request(self,request,address):
-                if not self.slots.acquire(blocking=False):request.close();return
-                try:super().process_request(request,address)
-                except BaseException:self.slots.release();raise
-            def process_request_thread(self,request,address):
-                try:super().process_request_thread(request,address)
-                finally:self.slots.release()
-        self.http = BoundedServer(('127.0.0.1', 0), Handler)
-        self.http.daemon_threads = True
+        self.http = _BoundedServer(self)
+        self.closed = threading.Event()
+        self._closing = False
         self.authority = f'127.0.0.1:{self.http.server_port}'
         self.origin = 'http://' + self.authority
         self.thread = threading.Thread(target=self.http.serve_forever, daemon=True)
@@ -212,7 +236,10 @@ class ResourceServer:
         with self.lock: self.routes = {}
 
     def close(self):
-        self.revoke()
-        def stop():
-            self.http.shutdown(); self.http.server_close()
-        threading.Thread(target=stop, daemon=True).start()
+        with self.lock:
+            self.routes = {}
+            if self._closing: return
+            self._closing = True
+        # Shutdown can wait for serve_forever; never block the GUI or retain
+        # ResourceServer via a closure while the background thread exits.
+        threading.Thread(target=_stop_server, args=(self.http, self.closed), daemon=True).start()

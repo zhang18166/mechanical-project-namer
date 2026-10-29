@@ -5,6 +5,7 @@ import os
 from threading import Event
 from urllib.parse import urlsplit
 from pathlib import Path
+from collections import deque
 
 from PyQt6.QtCore import QThread, QTimer, QUrl, Qt, pyqtSignal
 from PyQt6.QtWidgets import QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
@@ -16,7 +17,7 @@ from ..preview import read_glb, ResourceServer, PreviewError, ASSETS
 
 class OfflineInterceptor(QWebEngineUrlRequestInterceptor):
     def __init__(self, server, parent=None):
-        super().__init__(parent); self.server=server; self.blocked=[]; self.allowed=[]
+        super().__init__(parent); self.server=server; self.blocked=deque(maxlen=256); self.allowed=deque(maxlen=256)
 
     def interceptRequest(self, info):
         url=info.requestUrl().toString()
