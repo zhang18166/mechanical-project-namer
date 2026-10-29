@@ -1,5 +1,9 @@
 # 离线查看组件来源与许可
 
+## Phase 2D：内核来源与补丁复核（2026-10-29）
+
+结论PARTIAL，完整CVE范围、准确源码、资源逐字节核对及构建评估见[STEP_SECURITY.md](STEP_SECURITY.md)。当前组件没有安全补丁确认，STEP继续限定隔离开发模式；未升级运行内核。补充固定OCCT提交的LGPL许可例外原文，不分发新二进制。
+
 ## Phase 2C：受控STEP / STL（2026-10-28）
 
 复用Online 3D Viewer0.18.0与现有Qt6.11栈，新增加固定的 [occt-import-js0.0.23](https://www.npmjs.com/package/occt-import-js/v/0.0.23)。官方npm元数据、tarball完整性和package-lock已核对；上游main显示0.0.24，但registry实际最新发布为0.0.23，不混称版本。客户端运行无需Node，安装验证使用既有Node24.16.0/npm11.13.0，没有全局升级。

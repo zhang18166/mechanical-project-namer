@@ -82,5 +82,17 @@
     "optional_fixture_writer": "cadquery-ocp-novtk 8.0.1.1.0 + matching proxy; never used as an input reader",
     "upstream_security_review": "https://github.com/Open-Cascade-SAS/OCCT/pull/1514",
     "security_patch_included_claim": false
+  },
+  "phase2d_security": {
+    "review_date": "2026-10-29",
+    "status": "PARTIAL",
+    "runtime_kernel_changed": false,
+    "declared_occt_version": "7.6.1",
+    "occt_commit": "d2abb6d844231cb8f29be6894440874a4700e4a5",
+    "pr1514_merge": "573b4be6515268eff5a7c2acac183237d5388f70",
+    "patch_coverage_confirmed": false,
+    "step_normal_mode_allowed": false,
+    "license_exception_sha256": "04580a884ea6cea294402649ff7b5cbb167d47462d1340a4ed33e550db10a81b",
+    "details": "STEP_SECURITY.md"
   }
 }
