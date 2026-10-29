@@ -59,6 +59,18 @@ def main() -> int:
     instance = SingleInstance(instance_name)
     if not instance.start_or_notify():
         return 0
+    from .library_lock import library_lease, MaintenanceBusy
+    try:
+        with library_lease(Database().path):
+            return _client_session(app, instance, icon, dev_smoke, instance_name)
+    except MaintenanceBusy as error:
+        QMessageBox.information(None, '归档库正在维护', str(error))
+        instance.release()
+        return 5
+
+
+def _client_session(app, instance, icon, dev_smoke, instance_name):
+    """Keep a shared lease for the whole client, including its background workers."""
     settings = load_settings()
     try:
         database = Database()

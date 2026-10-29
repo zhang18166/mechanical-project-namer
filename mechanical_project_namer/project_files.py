@@ -143,7 +143,9 @@ class ProjectFileCatalog:
     def sources(self, project_id):
         with self.database.connect() as con:
             return [Source(row['path'], row['kind']) for row in con.execute(
-                'SELECT path,kind FROM project_file_sources WHERE project_id=? ORDER BY source_id', (project_id,))]
+                '''SELECT path,kind FROM project_file_sources s WHERE project_id=?
+                AND NOT EXISTS (SELECT 1 FROM snapshot_meta m WHERE m.key='detached_source:'||s.source_id)
+                ORDER BY source_id''', (project_id,))]
 
     def scan(self, project_id, sources=(), *, refresh=False, cancel=None, progress=None,
              max_entries=10000, seconds=15, max_depth=32):
@@ -219,6 +221,8 @@ class ProjectFileCatalog:
                 # Include disappeared/inaccessible paths; absence never deletes an index.
                 for key, row in old.items():
                     check()
+                    from .restored_state import DETACHED
+                    if row['error'].startswith(DETACHED):continue
                     if key not in batch.entries:
                         batch.entries[key] = inspect_file(row['path'], row)
             check()
@@ -250,6 +254,9 @@ class ProjectFileCatalog:
                 con.execute('''INSERT INTO project_file_sources(project_id,path,path_key,kind) VALUES (?,?,?,?)
                     ON CONFLICT(project_id,path_key) DO UPDATE SET kind=excluded.kind''',
                     (batch.project_id, source.path, path_key(source.path), source.kind))
+                con.execute('''DELETE FROM snapshot_meta WHERE key IN
+                    (SELECT 'detached_source:'||source_id FROM project_file_sources WHERE project_id=? AND path_key=?)''',
+                    (batch.project_id,path_key(source.path)))
             known = {}
             for row in con.execute('SELECT id,file_path FROM drawing_records WHERE project_id=?', (batch.project_id,)):
                 if row['file_path']:

@@ -12,6 +12,7 @@ import re
 import uuid
 
 from .paths import local_data_dir
+from .library_lock import library_lease, library_operation
 from .snapshot_io import (SnapshotError,Cancelled,ROLES,MAX_TOTAL,MAX_FILES,encoded,safe_path,
                           relative,validate_entries,digest,read_json,write_json,verify_tree,rename_new,check_cancel)
 
@@ -31,6 +32,24 @@ def role_for(path):
     ext=Path(path).suffix.lower()
     if ext in ('.sldprt','.sldasm','.slddrw','.prt'):return 'source'
     return {'.step':'exchange','.stp':'exchange','.glb':'preview','.pdf':'drawing'}.get(ext,'attachment')
+
+
+def snapshot_manifest(row):
+    request=json.loads(row['request_json'])
+    return dict(format_version=1,task_id=row['task_id'],version_id=row['version_id'],project_id=row['project_id'],
+        label=row['label'],note=row['note'],created_at=row['created_at'],dependency_status='unverified',
+        preview_status='unverified',required=request['required'],files=[{k:f[k] for k in
+        ('file_id','record_id','relative_path','role','software','size','sha256')} for f in request['files']])
+
+
+def verify_snapshot_folder(row,store_id,folder,*,cancel=None):
+    folder=safe_path(folder)
+    if {p.name for p in folder.iterdir()}!={'owner.json','manifest.json','payload'}:raise SnapshotError('归档目录结构不一致。')
+    if read_json(folder/'owner.json')[0]!={'store_id':store_id,'task_id':row['task_id']}:raise SnapshotError('归档归属记录不一致。')
+    doc,h=read_json(folder/'manifest.json')
+    if not row['manifest_sha'] or h!=row['manifest_sha'] or doc!=snapshot_manifest(row):raise SnapshotError('清单与数据库冻结记录不一致。')
+    verify_tree(folder/'payload',doc['files'],cancel=cancel)
+    return doc
 
 
 @contextmanager
@@ -58,6 +77,10 @@ def project_lock(folder,project_id):
 class SnapshotService:
     def __init__(self,repository,store=None,*,checkpoint=None):
         self.repository=repository;self.db=repository.database
+        with library_lease(self.db.path):
+            self._initialize(store,checkpoint)
+
+    def _initialize(self,store,checkpoint):
         self.store=safe_path(store or local_data_dir()/'snapshots')
         if self.store.is_relative_to(Path(__file__).resolve().parents[1]):raise SnapshotError('归档库不能放在源码工作树内。')
         self.checkpoint=checkpoint or (lambda point:None)
@@ -111,6 +134,7 @@ class SnapshotService:
         with self.db.connect() as c:
             return [dict(r) for r in c.execute('SELECT r.* FROM local_restores r JOIN local_versions v USING(version_id) WHERE v.project_id=? ORDER BY r.created_at DESC',(project_id,))]
 
+    @library_operation
     def prepare(self,project_id,root,selections,label,note='',*,required=(),task_id=None,cancel=None,progress=None):
         self.repository.get_project(project_id);root=safe_path(root)
         root=safe_path(os.path.realpath(root,strict=True))
@@ -123,7 +147,10 @@ class SnapshotService:
         for choice in selections:
             check_cancel(cancel)
             if choice['file_id'] not in known:raise SnapshotError('只能归档当前项目已有文件记录。')
-            row=known[choice['file_id']];path=safe_path(row['path'])
+            row=known[choice['file_id']]
+            from .restored_state import DETACHED
+            if row['error'].startswith(DETACHED):raise SnapshotError('工作文件待重新关联，请明确选择新的工作文件创建新版本。')
+            path=safe_path(row['path'])
             # Reject links first, then recover actual Windows filename casing.
             path=safe_path(os.path.realpath(path,strict=True))
             try:rel=relative(path.relative_to(root).as_posix())
@@ -156,19 +183,10 @@ class SnapshotService:
         self.checkpoint('prepared');return task
 
     def _manifest(self,row):
-        request=json.loads(row['request_json'])
-        return dict(format_version=1,task_id=row['task_id'],version_id=row['version_id'],project_id=row['project_id'],
-            label=row['label'],note=row['note'],created_at=row['created_at'],dependency_status='unverified',
-            preview_status='unverified',required=request['required'],files=[{k:f[k] for k in
-            ('file_id','record_id','relative_path','role','software','size','sha256')} for f in request['files']])
+        return snapshot_manifest(row)
 
     def _verify_at(self,row,folder,*,cancel=None):
-        if {p.name for p in folder.iterdir()}!={'owner.json','manifest.json','payload'}:raise SnapshotError('归档目录结构不一致。')
-        if read_json(folder/'owner.json')[0]!={'store_id':self.store_id,'task_id':row['task_id']}:raise SnapshotError('归档归属记录不一致。')
-        doc,h=read_json(folder/'manifest.json')
-        if not row['manifest_sha'] or h!=row['manifest_sha'] or doc!=self._manifest(row):raise SnapshotError('清单与数据库冻结记录不一致。')
-        verify_tree(folder/'payload',doc['files'],cancel=cancel)
-        return doc
+        return verify_snapshot_folder(row,self.store_id,folder,cancel=cancel)
 
     def _sources(self,row,cancel=None):
         for f in json.loads(row['request_json'])['files']:
@@ -184,8 +202,11 @@ class SnapshotService:
     def _space(self,folder,size):
         if shutil.disk_usage(folder).free<size+16*1024**2:raise SnapshotError('可用空间不足（另保留16 MiB余量）。')
 
+    @library_operation
     def run(self,task_id,*,cancel=None,progress=None):
         row=self._get(task_id)
+        from .restored_state import reject_detached_task
+        reject_detached_task(self.db,task_id)
         with project_lock(self.store/'locks',row['project_id']):
             row=self._get(task_id);dest=safe_path(self.store/'versions'/identifier(row['version_id']))
             if row['state']=='complete':
@@ -221,6 +242,7 @@ class SnapshotService:
                 except Exception:pass  # original failure and durable prepare/rename evidence remain
                 raise
 
+    @library_operation
     def verify(self,task_id,*,cancel=None):
         row=self._get(task_id)
         if row['state']!='complete':raise SnapshotError('任务尚未完成，请先恢复任务。')
@@ -230,17 +252,24 @@ class SnapshotService:
             self._update(task_id,integrity='failed',error=str(exc));raise
         self._update(task_id,integrity='verified',error='');return True
 
+    def _working_root(self,row):
+        from .restored_state import restored_instance
+        root=json.loads(row['request_json'])['root']
+        # Historical source locations are not probed in a restored instance.
+        return Path(os.path.abspath(root)) if restored_instance(self.db) else safe_path(root)
+
+    @library_operation
     def restore(self,task_id,destination,*,restore_id=None,cancel=None,progress=None):
         row=self._get(task_id);destination=safe_path(destination);restore_id=identifier(restore_id)
         if destination.is_relative_to(Path(__file__).resolve().parents[1]):raise SnapshotError('恢复输出不能放在源码工作树内。')
         with project_lock(self.store/'locks',row['project_id']):
-            root=safe_path(json.loads(row['request_json'])['root'])
+            root=self._working_root(row)
             if destination.is_relative_to(root) or root.is_relative_to(destination) or destination.is_relative_to(self.store) or self.store.is_relative_to(destination):raise SnapshotError('恢复目录必须独立于工作工程及归档库。')
             with self.db.connect() as c:existing=c.execute('SELECT * FROM local_restores WHERE restore_id=?',(restore_id,)).fetchone()
             if existing:
                 if existing['version_id']!=row['version_id'] or existing['destination']!=str(destination):raise SnapshotError('恢复任务绑定已变化。')
             else:
-                root=safe_path(json.loads(row['request_json'])['root'])
+                root=self._working_root(row)
                 if destination.exists() or not destination.parent.is_dir():raise SnapshotError('请选择父目录已存在的新目录，禁止覆盖或合并。')
                 if destination.is_relative_to(root) or root.is_relative_to(destination) or destination.is_relative_to(self.store) or self.store.is_relative_to(destination):raise SnapshotError('恢复目录必须独立于工作工程及归档库。')
                 self.verify(task_id,cancel=cancel)
@@ -288,12 +317,18 @@ class SnapshotService:
             except Exception:pass
             raise
 
+    @library_operation
     def resume_restore(self,restore_id,*,cancel=None,progress=None):
+        from .restored_state import reject_detached_task
+        reject_detached_task(self.db,restore_id,restore=True)
         job=self._get(restore_id,True)
         with self.db.connect() as c:task=c.execute('SELECT task_id FROM local_versions WHERE version_id=?',(job['version_id'],)).fetchone()[0]
         return self.restore(task,job['destination'],restore_id=restore_id,cancel=cancel,progress=progress)
 
+    @library_operation
     def abort(self,key,*,restore=False):
+        from .restored_state import reject_detached_task
+        reject_detached_task(self.db,key,restore=restore)
         row=self._get(key,restore)
         if restore:
             with self.db.connect() as c:task=c.execute('SELECT task_id FROM local_versions WHERE version_id=?',(row['version_id'],)).fetchone()[0]

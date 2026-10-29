@@ -91,7 +91,7 @@ class ProjectFilesPage(QWidget):
         self.table.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Expanding)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.table.horizontalHeader().setStretchLastSection(False)
-        for column, width in enumerate((180, 75, 125, 135, 190, 80, 150, 90)):
+        for column, width in enumerate((180, 75, 125, 135, 190, 80, 150, 165)):
             self.table.setColumnWidth(column, width)
         self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         right_layout.addWidget(self.table, 1)
@@ -149,8 +149,10 @@ class ProjectFilesPage(QWidget):
                     modified = datetime.fromtimestamp(row['mtime_ns']/1e9).astimezone().strftime('%Y-%m-%d %H:%M:%S') if row['mtime_ns'] else '未知'
                 except (ValueError, OSError, OverflowError):
                     modified = '时间异常'
+                from ..restored_state import DETACHED
+                state=DETACHED if row['error'].startswith(DETACHED) else STATE_LABELS[row['state']]
                 values = (row['name'], row['extension'].upper(), row['project_name'], row['record_number'] or '未关联',
-                          row['path'], f"{row['file_size']:,} B", modified, STATE_LABELS[row['state']])
+                          row['path'], f"{row['file_size']:,} B", modified, state)
                 for column, value in enumerate(values):
                     item = QTableWidgetItem(str(value)); item.setToolTip(row['error'] if column == 7 else str(value))
                     self.table.setItem(index, column, item)
@@ -204,6 +206,8 @@ class ProjectFilesPage(QWidget):
     def preview_selected(self):
         row=self.selected_file()
         if not row:self.status.setText('请先选择一个GLB或PDF文件。');return
+        from ..restored_state import DETACHED
+        if row.get('error','').startswith(DETACHED):self.status.setText(DETACHED+'；不会访问历史路径。');return
         extension=row['extension'].lower()
         if extension not in ('.glb','.pdf','.stl','.step','.stp'):
             self.status.setText('目前仅支持GLB、PDF、STL和STEP内嵌预览；该类型请使用“打开文件”。');return
@@ -259,6 +263,8 @@ class ProjectFilesPage(QWidget):
     def open_selected(self, directory=False, *, opener=None):
         row = self.selected_file()
         if not row: self.status.setText('请先选择一个文件。'); return
+        from ..restored_state import DETACHED
+        if row.get('error','').startswith(DETACHED):self.status.setText(DETACHED+'；不会访问历史路径。');return
         if not directory and row['extension'].lower() not in EXTENSIONS:
             self.status.setText('本阶段附件及新增原生格式仅文件级管理，不启动关联程序；可使用“定位文件”。');return
         try:

@@ -53,3 +53,9 @@ node_modules/
 .snapshot-test-probe
 .mw-store.json
 .mw-restore*
+.mw-library-job-*/
+.mw-library-job-*.lock
+.mw-library-restore.json
+.mw-library-gui-drill
+.library-backup-probe
+*.library.lock

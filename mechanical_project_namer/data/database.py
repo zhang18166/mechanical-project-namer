@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from ..paths import database_path
+from ..library_lock import library_lease, library_operation
 
 SCHEMA_VERSION = 13
 
@@ -393,6 +394,21 @@ class ClosingConnection(sqlite3.Connection):
         finally:
             self.close()
 
+    def close(self):
+        try:
+            return super().close()
+        finally:
+            lease = getattr(self, '_library_lease', None)
+            if lease is not None:
+                self._library_lease = None
+                lease.__exit__(None, None, None)
+
+    def __del__(self):
+        try:
+            self.close()
+        except Exception:
+            pass
+
 
 class Database:
     def __init__(self, path: Path | None = None) -> None:
@@ -400,12 +416,20 @@ class Database:
 
     def connect(self) -> sqlite3.Connection:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        connection = sqlite3.connect(self.path, timeout=10, factory=ClosingConnection)
+        lease = library_lease(self.path)
+        lease.__enter__()
+        try:
+            connection = sqlite3.connect(self.path, timeout=10, factory=ClosingConnection)
+        except BaseException:
+            lease.__exit__(None, None, None)
+            raise
+        connection._library_lease = lease
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys=ON")
         connection.execute("PRAGMA busy_timeout=10000")
         return connection
 
+    @library_operation
     def migrate(self) -> None:
         self._backup_before_upgrade()
         with self.connect() as connection:

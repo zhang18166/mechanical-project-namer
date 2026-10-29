@@ -43,7 +43,7 @@ class SnapshotsDialog(QDialog):
         self.files=QTableWidget(0,5);self.files.setHorizontalHeaderLabels(['选择 / 文件','大小','状态','文件角色','软件来源（可标注）'])
         self.files.horizontalHeader().setSectionResizeMode(0,QHeaderView.ResizeMode.Stretch);self.files.setMaximumHeight(270)
         self.files.verticalHeader().setDefaultSectionSize(40)
-        for column,width in [(1,110),(2,120),(3,150),(4,180)]:self.files.setColumnWidth(column,width)
+        for column,width in [(1,110),(2,180),(3,150),(4,180)]:self.files.setColumnWidth(column,width)
         layout.addWidget(self.files)
         self.summary=QLabel();self.summary.setWordWrap(True);layout.addWidget(self.summary);self.files.itemChanged.connect(self.update_summary)
         bar=QHBoxLayout();self.label=QLineEdit();self.label.setPlaceholderText('版本标签，例如 V1')
@@ -101,8 +101,10 @@ class SnapshotsDialog(QDialog):
             item=QTableWidgetItem(row['name']);item.setToolTip(row['path']);item.setFlags(Qt.ItemFlag.ItemIsEnabled|Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(Qt.CheckState.Checked if selected_id is None or selected_id==row['file_id'] else Qt.CheckState.Unchecked)
             self.files.setItem(i,0,item)
-            for col,value in [(1,str(row['file_size'])),(2,STATE_LABELS[row['state']])]:
-                item=QTableWidgetItem(value);item.setFlags(Qt.ItemFlag.ItemIsEnabled);self.files.setItem(i,col,item)
+            from ..restored_state import DETACHED
+            state=DETACHED if row['error'].startswith(DETACHED) else STATE_LABELS[row['state']]
+            for col,value in [(1,str(row['file_size'])),(2,state)]:
+                item=QTableWidgetItem(value);item.setToolTip(value);item.setFlags(Qt.ItemFlag.ItemIsEnabled);self.files.setItem(i,col,item)
             role=QComboBox()
             for key,label in LABELS.items():role.addItem(label,key)
             role.setCurrentIndex(list(LABELS).index(role_for(row['path'])));role.currentIndexChanged.connect(self.update_summary);self.files.setCellWidget(i,3,role)

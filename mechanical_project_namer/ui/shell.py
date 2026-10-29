@@ -215,6 +215,10 @@ class ApplicationShell:
         if self.current_project_id is None:
             self.main_window.file_sync_status.setText('目录检查：尚未选择项目。')
             return
+        from ..restored_state import restored_instance
+        if restored_instance(self.repository.database):
+            self.main_window.file_sync_status.setText('整体恢复实例：工作文件待重新关联；不会自动检查历史路径。')
+            return
         project = self.repository.get_project(self.current_project_id)
         key = (project.id, project.directory, project.solidworks_part_directory)
         if key == getattr(self, '_last_checked_project', None):
@@ -248,6 +252,10 @@ class ApplicationShell:
         worker.start()
 
     def _open_file_sync(self):
+        from ..restored_state import restored_instance
+        if restored_instance(self.repository.database):
+            QMessageBox.information(self.main_window,'工作文件待重新关联','请在“项目文件”中明确添加新的工作文件；不会扫描旧位置。')
+            return
         if self.current_project_id is None:
             QMessageBox.information(self.main_window, '尚未选择项目', '请先选择项目并设置项目目录或SW保存目录。')
             return
@@ -351,6 +359,7 @@ class ApplicationShell:
         main.record_export_requested.connect(self._export_records)
         main.file_sync_requested.connect(self._open_file_sync)
         main.project_files_requested.connect(self._show_project_files)
+        main.backups_requested.connect(self._show_backups)
         main.settings_page.save_requested.connect(self._save_settings_values)
         main.ai_requested.connect(self._request_ai)
         main.plan_history_requested.connect(self._show_plan_history)
@@ -377,6 +386,16 @@ class ApplicationShell:
         self.solidworks_controller.completed.connect(self._on_solidworks_completed)
         self.solidworks_controller.failed.connect(self._on_solidworks_failed)
         self.solidworks_controller.busy_changed.connect(self._set_solidworks_busy)
+
+    def _show_backups(self):
+        from ..development import is_development, development_root
+        if not is_development():
+            self.notify('隔离开发限定','请使用 scripts/dev_backups.ps1；本阶段不迁移正式数据。')
+            return
+        import sys
+        from PyQt6.QtCore import QProcess
+        ok,_=QProcess.startDetached(sys.executable,['-m','mechanical_project_namer.backup_entry','--profile',str(development_root())],str(Path(__file__).resolve().parents[2]))
+        self.notify('备份与恢复', '独立维护入口已打开；创建备份前请从托盘退出所有源客户端。' if ok else '维护入口未启动，请运行 scripts/restore_library.ps1。')
 
     def _show_project_files(self) -> None:
         if self.project_files_page is None:
@@ -1600,6 +1619,11 @@ class ApplicationShell:
             record = self.repository.get_record(record_id)
         except LookupError:
             return
+        if action in {'open_file','open_directory'}:
+            from ..restored_state import restored_instance
+            if restored_instance(self.repository.database):
+                self.notify('工作文件待重新关联','历史来源只作记录，请在项目文件页明确添加新的工作文件。')
+                return
         if action == "edit":
             self._open_record(record_id)
             return

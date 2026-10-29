@@ -21,6 +21,7 @@ from ..numbering.simple import SIMPLE_TYPE, full_name
 class SimpleMainWindow(MainWindow):
     simple_mode = True
     project_files_requested = pyqtSignal()
+    backups_requested = pyqtSignal()
 
     def __init__(self, settings):
         self._simple_project = None
@@ -45,6 +46,9 @@ class SimpleMainWindow(MainWindow):
         self.project_files_button = QPushButton('项目文件')
         self.project_files_button.clicked.connect(self.project_files_requested.emit)
         bar.addWidget(self.project_files_button)
+        self.backups_button = QPushButton('备份与恢复')
+        self.backups_button.clicked.connect(self.backups_requested.emit)
+        bar.addWidget(self.backups_button)
         more = QPushButton('更多')
         self.more_button = more
         menu = QMenu(more)
