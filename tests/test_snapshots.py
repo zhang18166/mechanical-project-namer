@@ -35,7 +35,11 @@ def business(repo):
 
 
 def test_versions_restore_identity_roles_and_no_number_allocation(env,tmp_path):
-    s,repo,p,work,paths,choices=env;before=business(repo);stamps={f:(f.read_bytes(),f.stat().st_mtime_ns) for f in paths}
+    s,repo,p,work,paths,choices=env
+    duplicate=work/'子装配B/同名.prt';duplicate.write_bytes(b'FICTIONAL second directory, same full filename')
+    catalog=ProjectFileCatalog(repo);catalog.register_attachments(p.id,[str(duplicate)]);paths.append(duplicate)
+    choices[:]=[dict(file_id=r['file_id']) for r in catalog.list_files(p.id)]
+    before=business(repo);stamps={f:(f.read_bytes(),f.stat().st_mtime_ns) for f in paths}
     t=prepare(env);row=s.run(t);assert row['state']=='complete'
     assert s.run(t)['version_id']==row['version_id'];assert s.prepare(p.id,work,choices,'V1','虚构测试',task_id=t)==t
     assert business(repo)==before
@@ -49,6 +53,7 @@ def test_versions_restore_identity_roles_and_no_number_allocation(env,tmp_path):
     paths[0].write_bytes(b'FICTIONAL V2');t2=prepare(env,'V2');s.run(t2);assert s.verify(t)
     dest=tmp_path/'恢复 中文';restore=s.restore(t,dest);assert restore['state']=='complete'
     assert (dest/'子装配A/同名.prt').read_bytes()==stamps[paths[0]][0]
+    assert (dest/'子装配B/同名.prt').read_bytes()==stamps[duplicate][0]
     assert (dest/'子装配B/同名.SLDPRT').is_file() and (dest/'原名.step').is_file()
     assert json.loads((dest/'.mw-restore.json').read_text())['cad_openability']=='unverified'
     new=SnapshotService(Repository(Database(repo.database.path)),s.store);assert len(new.history(p.id))==2
