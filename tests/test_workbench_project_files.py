@@ -12,6 +12,7 @@ import pytest
 from PyQt6.QtCore import QTimer, Qt
 
 from mechanical_project_namer.data import Database, Repository
+from mechanical_project_namer.data.database import SCHEMA_VERSION
 from mechanical_project_namer.projects import ProjectService
 from mechanical_project_namer.project_files import (
     EXTENSIONS, CatalogError, FileEntry, ProjectFileCatalog, Source, local_path,
@@ -226,9 +227,9 @@ def test_schema11_upgrade_is_idempotent_and_preserves_history_and_counters(tmp_p
     assert after['number_reservations']==before['number_reservations']
     assert after['part_sequence_counters']==before['part_sequence_counters']
     with db.connect() as con:
-        assert con.execute('SELECT version FROM schema_meta').fetchone()[0]==12
+        assert con.execute('SELECT version FROM schema_meta').fetchone()[0]==SCHEMA_VERSION
         assert con.execute('PRAGMA foreign_key_check').fetchall()==[]
-    backups=list((tmp_path/'backups/database').glob('*pre_schema12*.db'));assert len(backups)==1
+    backups=list((tmp_path/'backups/database').glob(f'*pre_schema{SCHEMA_VERSION}*.db'));assert len(backups)==1
     with sqlite3.connect(backups[0]) as con:
         assert con.execute('SELECT version FROM schema_meta').fetchone()[0]==11
         assert con.execute('PRAGMA integrity_check').fetchone()[0]=='ok'

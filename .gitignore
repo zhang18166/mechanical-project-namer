@@ -47,3 +47,9 @@ node_modules/
 *.SLDASM
 *.slddrw
 *.SLDDRW
+*.prt
+*.PRT
+/snapshots/
+.snapshot-test-probe
+.mw-store.json
+.mw-restore*

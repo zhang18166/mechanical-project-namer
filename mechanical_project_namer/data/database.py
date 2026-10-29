@@ -7,7 +7,7 @@ from pathlib import Path
 
 from ..paths import database_path
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_meta (
@@ -330,6 +330,30 @@ CREATE TABLE IF NOT EXISTS ai_plan_adoptions (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS snapshot_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS local_snapshot_events (
+    event_id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL,
+    kind TEXT NOT NULL, state TEXT NOT NULL, details TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_local_snapshot_events ON local_snapshot_events(task_id,event_id);
+CREATE TABLE IF NOT EXISTS local_versions (
+    task_id TEXT PRIMARY KEY, version_id TEXT NOT NULL UNIQUE,
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    label TEXT NOT NULL COLLATE NOCASE, note TEXT NOT NULL, created_at TEXT NOT NULL,
+    request_hash TEXT NOT NULL, request_json TEXT NOT NULL, store_path TEXT NOT NULL,
+    state TEXT NOT NULL, integrity TEXT NOT NULL DEFAULT 'unverified',
+    dependency_status TEXT NOT NULL DEFAULT 'unverified',
+    preview_status TEXT NOT NULL DEFAULT 'unverified',
+    stage_name TEXT NOT NULL DEFAULT '', manifest_sha TEXT NOT NULL DEFAULT '',
+    error TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL,
+    UNIQUE(project_id,label)
+);
+CREATE TABLE IF NOT EXISTS local_restores (
+    restore_id TEXT PRIMARY KEY, version_id TEXT NOT NULL REFERENCES local_versions(version_id),
+    destination TEXT NOT NULL, state TEXT NOT NULL, stage_name TEXT NOT NULL DEFAULT '',
+    manifest_sha TEXT NOT NULL, error TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS pending_solidworks_creates (
     operation_id TEXT PRIMARY KEY,
     project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,

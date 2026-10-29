@@ -49,6 +49,7 @@ class ProjectFilesPage(QWidget):
         self.worker = None
         self.preview_window = None
         self.pdf_window = None
+        self.snapshot_window = None
         self.project_id = None
         self.rows = []
         self._projects = []
@@ -78,8 +79,9 @@ class ProjectFilesPage(QWidget):
         self.open_button = QPushButton('打开文件'); self.locate_button = QPushButton('定位文件')
         self.link_button = QPushButton('关联零件')
         self.preview_button = QPushButton('本地预览')
+        self.snapshot_button = QPushButton('创建本地版本 / 版本历史')
         for button in (self.add_files, self.add_directory, self.rescan, self.cancel_button,
-                       self.preview_button, self.open_button, self.locate_button, self.link_button): actions.addWidget(button)
+                       self.preview_button, self.snapshot_button, self.open_button, self.locate_button, self.link_button): actions.addWidget(button)
         right_layout.addLayout(actions)
         self.table = QTableWidget(0, 8)
         self.table.setHorizontalHeaderLabels(['文件名称', '类型', '所属项目', '关联零件编号', '原始完整路径', '文件大小', '修改时间', '存在状态'])
@@ -109,6 +111,7 @@ class ProjectFilesPage(QWidget):
         self.locate_button.clicked.connect(lambda: self.open_selected(True))
         self.link_button.clicked.connect(self._associate)
         self.preview_button.clicked.connect(self.preview_selected)
+        self.snapshot_button.clicked.connect(self.open_snapshots)
         self.table.doubleClicked.connect(lambda: self.open_selected(False))
         self._set_busy(False)
 
@@ -230,16 +233,34 @@ class ProjectFilesPage(QWidget):
 
     def _preview_destroyed(self):self.preview_window=None
 
+    def open_snapshots(self):
+        from ..development import is_development
+        if not is_development():self.status.setText('Phase 3A仅在隔离开发模式开放，请使用 scripts/dev_snapshots.ps1。');return
+        if self.project_id is None:self.status.setText('请先选择已有项目。');return
+        try:
+            if self.snapshot_window is None:
+                from .snapshots_dialog import SnapshotsDialog
+                row=self.selected_file()
+                self.snapshot_window=SnapshotsDialog(self.repository,self.project_id,self,selected_id=row['file_id'] if row else None)
+                self.snapshot_window.destroyed.connect(lambda:setattr(self,'snapshot_window',None))
+            elif self.snapshot_window.project_id!=self.project_id:
+                self.status.setText('请先关闭另一项目的版本窗口。');return
+            self.snapshot_window.show();self.snapshot_window.raise_()
+        except Exception as exc:self.status.setText('无法打开本地版本：'+str(exc))
+
     @property
-    def preview_busy(self):return any(window is not None and window.busy for window in (self.preview_window,self.pdf_window))
+    def preview_busy(self):return any(window is not None and window.busy for window in (self.preview_window,self.pdf_window,self.snapshot_window))
 
     def close_preview(self):
+        if self.snapshot_window is not None:self.snapshot_window.close()
         if self.preview_window is not None:self.preview_window.close()
         if self.pdf_window is not None:self.pdf_window.close()
 
     def open_selected(self, directory=False, *, opener=None):
         row = self.selected_file()
         if not row: self.status.setText('请先选择一个文件。'); return
+        if not directory and row['extension'].lower() not in EXTENSIONS:
+            self.status.setText('本阶段附件及新增原生格式仅文件级管理，不启动关联程序；可使用“定位文件”。');return
         try:
             path = local_path(row['path'])
             if not directory:

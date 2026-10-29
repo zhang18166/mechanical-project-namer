@@ -114,6 +114,16 @@ class ProjectFileCatalog:
         self.repository = repository
         self.database = repository.database
 
+    def register_attachments(self, project_id, paths):
+        """Explicit selection only; directory scans retain their existing CAD filter."""
+        if not 0 < len(paths) <= 128: raise CatalogError('每批请选择1至128个附件。')
+        batch = ScanBatch(project_id)
+        for value in paths:
+            entry = inspect_file(local_path(value))
+            if entry.state != 'present': raise CatalogError(entry.error)
+            batch.entries[path_key(entry.path)] = entry
+        return self.commit(batch)
+
     def list_files(self, project_id=None, query='', extension=''):
         clauses, values = [], []
         if project_id is not None:
