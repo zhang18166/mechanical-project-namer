@@ -8,3 +8,4 @@
 - 产品约束：[需求](docs/workbench/REQUIREMENTS.md)；实际验收与开发说明：[基线](docs/workbench/BASELINE.md)；阶段范围：[计划](docs/workbench/PLAN.md)。原本机的私有接管资料保持仓库外或原工作区；公开归档与排除范围见进度文档。
 
 - 阶段完成后更新 [PROGRESS](docs/workbench/PROGRESS.md)；只从公开历史派生安全分支，禁止推送本机私有历史。详见 CONTRIBUTING.md。
+- 离线版本入口：`scripts/dev_snapshots.ps1`，详见 [PHASE3A](docs/workbench/PHASE3A.md)。归档/恢复必须后台执行、只写隔离目录；字节完整性、装配依赖和预览对应分别记录。不得覆盖源工程、已完成版本或已有恢复目录。
