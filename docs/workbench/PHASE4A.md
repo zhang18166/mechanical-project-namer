@@ -2,6 +2,8 @@
 
 2026-10-30。**开发验收PASS（Windows客户端＋本机WSL2 Ubuntu26.04隔离服务范围）**，不代表Ubuntu22.04、HTTPS或生产部署认证。GitHub同步单独记入PROGRESS及最终远端核对。从公开`82a72679c1c55a30c597636fc59f9b3a66fecc07`派生独立分支`codex/mechanical-workbench-phase4a-auth`，工作树`<开发根>/_worktrees/mechanical-workbench-phase4a-auth`。原工作树和未提交修改保留。应用1.7.1、桌面Schema13不变；**Phase2D仍PARTIAL、STEP普通模式关闭**。
 
+实现/验收归档提交`f24ac97bb40d24f143c26c8547cd272633986874`已安全推送同名独立分支并读回SHA一致，原有10个远端分支不变；本条同步记录为后续文档提交，不含运行数据。最终远端SHA以分支历史与交付报告核对为准。
+
 ## 范围与组件
 
 新增独立`account_server`复用Phase3C.1的任务/上传/校验/封存/健康/下载实现，只给原服务增加两个事务内扩展钩子。原预置身份实验入口保留，账号服务不接受其固定令牌。服务器为纯Python+Argon2，不依赖Qt、COM、注册表、凭据管理器或CAD软件。无公开注册、匿名分享、云/NAS、转换、安装包或部署。

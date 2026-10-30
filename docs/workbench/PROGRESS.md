@@ -1,6 +1,6 @@
 ## Phase 4A Linux隔离账号与远端项目索引（2026-10-30）
 
-**开发验收PASS（Windows＋本机WSL2 Ubuntu26.04隔离服务范围）**。公开基准`82a72679c1c55a30c597636fc59f9b3a66fecc07`，独立分支`codex/mechanical-workbench-phase4a-auth`。应用1.7.1、桌面Schema13不变，独立服务账号索引schema2。旧工作树及私有历史保留，不反向覆盖。详见[PHASE4A](PHASE4A.md)。GitHub同步待最终提交后读回，单独报告。
+**开发验收PASS（Windows＋本机WSL2 Ubuntu26.04隔离服务范围）**。公开基准`82a72679c1c55a30c597636fc59f9b3a66fecc07`，独立分支`codex/mechanical-workbench-phase4a-auth`。应用1.7.1、桌面Schema13不变，独立服务账号索引schema2。旧工作树及私有历史保留，不反向覆盖。详见[PHASE4A](PHASE4A.md)。实现及验收提交`f24ac97bb40d24f143c26c8547cd272633986874`。
 
 - 已实现并实测：纯服务端Argon2id、一次性离线bootstrap、管理员开户/停用/角色/重置/审计、强制初始改密、限流/过期/退出/会话撤销、最后管理员保护；远端UUID及显式来源映射，GLB/PDF/源下载/发布/管理权限分离。
 - Windows真实项目文件入口及管理员/成员窗口，通过独立WSL2 Ubuntu26.04服务完成授权、发布、下载哈希及撤销；Linux服务普通用户、127.0.0.1、512MiB地址空间/128描述符。没有安装虚拟化、改网络、连接真实云/NAS或使用真实CAD。
@@ -10,6 +10,9 @@
 | 日期 | 提交 / 状态 | 事实 |
 | --- | --- | --- |
 | 2026-10-30 | 基准`82a7267` / 隔离验收PASS | 独立4A工作树；809基线、最终883、Linux21项、真实Linux/Windows GUI、有限资源及源码保护通过；提交/远端SHA随后单独核对，不代表生产部署。 |
+| 2026-10-30 | `f24ac97` / GitHub同步PASS | 33份安全文本及全部新增历史审查后推送独立4A分支，实际读回远端SHA一致，原有10分支均未变。本条同步说明另作文档提交，最终SHA以分支历史及最终远端核对为准。 |
+
+**GitHub同步PASS**：未推送私有历史、账号凭据、运行索引/数据库、模型、快照、日志、截图、备份、wheel或虚拟环境。未强推、合并、创建PR、Release或安装包。本轮自建Windows/Linux账号服务均已退出。完成Phase4A后停止；Ubuntu22.04/HTTPS/生产部署及Phase2D未解决项保持原边界。
 
 ## Phase 3C.1 发布协议收尾（2026-10-30）
 
