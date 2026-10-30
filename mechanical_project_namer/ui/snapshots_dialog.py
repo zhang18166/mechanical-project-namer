@@ -31,7 +31,7 @@ class SnapshotsDialog(QDialog):
     def __init__(self,repository,project_id,parent=None,selected_id=None,*,store=None):
         super().__init__(parent);self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         self.repository=repository;self.project_id=project_id;self.service=SnapshotService(repository,store)
-        self.worker=None;self.closing=False;self.rows=[];self.jobs=[];self.file_rows=[]
+        self.worker=None;self.closing=False;self.rows=[];self.jobs=[];self.file_rows=[];self.publish_window=None
         self.setWindowTitle('本地版本与恢复');self.resize(1120,850)
         layout=QVBoxLayout(self)
         self.title=QLabel();self.title.setTextFormat(Qt.TextFormat.PlainText);self.title.setWordWrap(True);layout.addWidget(self.title)
@@ -63,6 +63,7 @@ class SnapshotsDialog(QDialog):
         for text,fn in [('刷新版本历史',self.refresh),('查看任务记录',self.show_events),('校验',self.verify_selected),('恢复到新目录',self.restore_selected),('恢复归档任务',self.resume_selected),('终止归档任务',self.abort_selected)]:
             button=QPushButton(text);button.clicked.connect(fn);bar.addWidget(button);self.actions[text]=button
         layout.addLayout(bar)
+        publish=QPushButton('发布到测试服务');publish.clicked.connect(self.open_publish);layout.addWidget(publish)
         self.target=QLineEdit();self.target.setPlaceholderText('恢复到全新的独立目录，父目录必须已存在（不覆盖非空或空的已有目录）')
         bar=QHBoxLayout();bar.addWidget(self.target,1);browse=QPushButton('选择恢复父目录');browse.clicked.connect(self.choose_target);bar.addWidget(browse);layout.addLayout(bar)
         self.restores=QComboBox();self.restores.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
@@ -77,7 +78,7 @@ class SnapshotsDialog(QDialog):
         if pending:self.status.setText(f'发现{pending}个未完成/终止/失败任务；选择相应任务后可恢复或终止。不会自动重写文件或删除暂存。')
 
     @property
-    def busy(self):return self.worker is not None
+    def busy(self):return self.worker is not None or self.publish_window is not None
 
     def choose_root(self):
         if self.busy:return
@@ -188,7 +189,17 @@ class SnapshotsDialog(QDialog):
         text.setPlainText('\n'.join(f"{r['created_at']} {STATES.get(r['state'],r['state'])} {json.dumps(json.loads(r['details']),ensure_ascii=False)}" for r in self.service.events(key,restore=restore)))
         layout.addWidget(text);window.exec()
     def cancel_operation(self):
+        if self.publish_window:self.publish_window.close()
         if self.worker:self.worker.cancel.set();self.status.setText('正在请求取消；已提交的版本不会被删除或伪报取消。')
+    def open_publish(self):
+        row=self.selected()
+        if row and not self.busy:
+            from .publish_dialog import PublishDialog
+            dialog=PublishDialog(self.service,row['task_id'],self);self.publish_window=dialog
+            try:dialog.exec()
+            finally:
+                self.publish_window=None
+                if self.closing:QTimer.singleShot(0,self.close)
     def closeEvent(self,event):
         if self.busy:self.closing=True;self.cancel_operation();self.hide();event.ignore()
         else:event.accept()
