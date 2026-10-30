@@ -1,5 +1,7 @@
 # 项目长期约束
 
+- 发布协议仍为本机实验：`scripts/start_publish_server.ps1`、`scripts/stop_publish_server.ps1`、`scripts/dev_publish.ps1`，见[PHASE3C](docs/workbench/PHASE3C.md)。只绑定127.0.0.1，身份配置/服务数据在仓库外；不得把实验服务用于公网或生产。
+
 - 在现有 Python/PyQt6 命名助手上增量开发；版本由 pyproject.toml 与包内 __version__ 保持一致，不按目录名判断。
 - 开发入口：`scripts/dev.ps1`；测试入口：`scripts/test_workbench.ps1`。真实 AI、Windows 凭据、SOLIDWORKS 联动须单独明确授权及验收，模拟测试不能替代。
 - 修改可能写数据的入口前，先定位真实路径并在仓库外做可恢复备份；SQLite 使用在线一致性备份，开发数据和进程资源与正式实例隔离。保留用户修改及现用软件。
