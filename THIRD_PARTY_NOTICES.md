@@ -1,5 +1,7 @@
 # 第三方依赖说明
 
+Phase4A账号服务固定Argon2id库及传递依赖，官方来源、wheel哈希、Windows/Linux实际兼容和完整许可见[账号组件记录](third_party/accounts/README.md)。服务端不依赖Qt、COM或CAD，未分发服务器二进制或安装包。
+
 ## Phase 2A 新增记录
 
 离线GLB查看器新增本地捆绑JS（MIT许可的Online 3D Viewer/three.js/fflate），以及可选PyQt6-WebEngine；完整许可、版本、来源和安全修复见 [third_party/preview](third_party/preview/README.md)。本阶段运行栈为PyQt6及绑定6.11.0、Qt/WebEngine运行库6.11.2，未分发Qt二进制或安装包。下表保留原安装包历史构建环境，不代表Phase 2A使用旧Qt。

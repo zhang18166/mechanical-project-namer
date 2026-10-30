@@ -50,6 +50,7 @@ class ProjectFilesPage(QWidget):
         self.preview_window = None
         self.pdf_window = None
         self.snapshot_window = None
+        self.account_window = None
         self.project_id = None
         self.rows = []
         self._projects = []
@@ -80,9 +81,14 @@ class ProjectFilesPage(QWidget):
         self.link_button = QPushButton('关联零件')
         self.preview_button = QPushButton('本地预览')
         self.snapshot_button = QPushButton('创建本地版本 / 版本历史')
+        self.account_button = QPushButton('测试服务登录 / 远端项目')
+        from ..development import is_development
+        self.account_button.setVisible(is_development())
+        self.account_button.clicked.connect(self.open_accounts)
         for button in (self.add_files, self.add_directory, self.rescan, self.cancel_button,
                        self.preview_button, self.snapshot_button, self.open_button, self.locate_button, self.link_button): actions.addWidget(button)
         right_layout.addLayout(actions)
+        actions.addWidget(self.account_button)
         self.table = QTableWidget(0, 8)
         self.table.setHorizontalHeaderLabels(['文件名称', '类型', '所属项目', '关联零件编号', '原始完整路径', '文件大小', '修改时间', '存在状态'])
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -252,10 +258,19 @@ class ProjectFilesPage(QWidget):
             self.snapshot_window.show();self.snapshot_window.raise_()
         except Exception as exc:self.status.setText('无法打开本地版本：'+str(exc))
 
+    def open_accounts(self):
+        from ..development import is_development
+        if not is_development():return
+        from .accounts_dialog import AccountsDialog
+        if self.account_window is None:self.account_window=AccountsDialog(self.repository,self)
+        self.account_window.update_identity()
+        self.account_window.show();self.account_window.raise_()
+
     @property
-    def preview_busy(self):return any(window is not None and window.busy for window in (self.preview_window,self.pdf_window,self.snapshot_window))
+    def preview_busy(self):return any(window is not None and window.busy for window in (self.preview_window,self.pdf_window,self.snapshot_window,self.account_window))
 
     def close_preview(self):
+        if self.account_window is not None:self.account_window.close()
         if self.snapshot_window is not None:self.snapshot_window.close()
         if self.preview_window is not None:self.preview_window.close()
         if self.pdf_window is not None:self.pdf_window.close()

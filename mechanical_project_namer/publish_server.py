@@ -76,6 +76,12 @@ class Store:
         c.execute('PRAGMA synchronous=FULL')
         return c
 
+    def task_created(self, connection, task, project):
+        """Extension hook inside the task transaction; legacy protocol is unchanged."""
+
+    def task_completed(self, connection, task):
+        """Extension hook inside registration, including filesystem recovery."""
+
     def get(self, task):
         with self.db() as c:
             row = c.execute('SELECT * FROM tasks WHERE id=?', (uid(task),)).fetchone()
@@ -131,6 +137,7 @@ class Store:
         if row['state'] == 'receiving' and final.exists() and healthy:
             with self.db() as c:
                 c.execute("UPDATE tasks SET state='complete' WHERE id=? AND state='receiving'", (row['id'],))
+                self.task_completed(c, row['id'])
             row['state'] = 'complete'
         verified = self.verified(row) if row['state'] == 'receiving' and not final.exists() else (list(range(len(m['files']))) if healthy else [])
         return dict(task=row['id'], project=row['project'], version=row['version'],
@@ -412,6 +419,7 @@ class Handler(BaseHTTPRequestHandler):
                             if c.execute("SELECT 1 FROM tasks WHERE project=? AND state='receiving'", (project,)).fetchone():
                                 raise ProtocolError('project-busy')
                             c.execute('INSERT INTO tasks VALUES (?,?,?,?,?,?)', (task, project, m['version'], sha(m), data(m).decode(), 'receiving'))
+                            s.task_created(c, task, project)
                     return self.reply(200, s.status(s.get(task)))
             if len(parts) >= 2 and parts[0] == 'tasks':
                 # Unknown/foreign tasks are deliberately indistinguishable to callers.
@@ -482,6 +490,7 @@ class Handler(BaseHTTPRequestHandler):
                         control.checkpoint('db-write')
                         with s.db() as c:
                             c.execute("UPDATE tasks SET state='complete' WHERE id=?", (row['id'],))
+                            s.task_completed(c, row['id'])
                             control.checkpoint('db-commit')
                         control.checkpoint('after-db')
                         if self.server.fault == 'lost-response':
