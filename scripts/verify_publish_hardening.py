@@ -290,7 +290,7 @@ def gui_targets_case(f):
             assert time.monotonic()<end
             QTest.qWait(20)
     try:
-        d.publish();wait();assert '已提交' in d.status.text()
+        d.publish();assert not d.choose_button.isEnabled();wait();assert d.choose_button.isEnabled() and '已提交' in d.status.text()
         d.config.setText(str(b.root/'publisher.json'))
         d.grab().save(str(f.root/'gui-switched-target.png'))
         assert '已提交' not in d.status.text(),'A success leaked into B current state'

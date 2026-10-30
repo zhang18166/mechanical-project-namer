@@ -36,7 +36,7 @@ class PublishDialog(QDialog):
         layout.addWidget(QLabel('仅127.0.0.1隔离测试；不连接腾讯云/飞牛。中断传输保留任务；终止任务不可复活。'))
         self.config=QLineEdit();self.config.setPlaceholderText('仓库外测试身份配置JSON路径')
         self.config.textChanged.connect(self.config_changed);layout.addWidget(self.config)
-        choose=QPushButton('选择测试身份配置');choose.clicked.connect(self.choose);layout.addWidget(choose)
+        self.choose_button=QPushButton('选择测试身份配置');self.choose_button.clicked.connect(self.choose);layout.addWidget(self.choose_button)
         self.identity=QLabel('尚未连接；无当前服务健康确认');self.identity.setWordWrap(True);layout.addWidget(self.identity)
         self.history=QLabel('无本目标历史确认');self.history.setWordWrap(True);layout.addWidget(self.history)
         self.target=QLineEdit();self.target.setPlaceholderText('下载到尚不存在的新目录');layout.addWidget(self.target)
@@ -82,6 +82,7 @@ class PublishDialog(QDialog):
         self.history.setText(f'本地状态：{old["state"]}；上次服务确认：{confirmation.get("state","未确认")}，已确认 {count}/{total}；时间戳 {old["confirmed_at"]}（不是当前健康）')
 
     def choose(self):
+        if self.worker or self.closing:return
         path,_=QFileDialog.getOpenFileName(self,'选择仓库外测试身份配置','','JSON (*.json)')
         if path:self.config.setText(path)
 
@@ -104,7 +105,7 @@ class PublishDialog(QDialog):
                 if old:self.ledger.update(key,'cancelled' if old['state']=='cancelled' else 'failed',code=error_code(exc))
                 raise
         self.worker=SnapshotWorker(execute,self)
-        self.config.setEnabled(False);self.target.setEnabled(False)
+        self.config.setEnabled(False);self.target.setEnabled(False);self.choose_button.setEnabled(False)
         self.worker.progress.connect(self.status.setText)
         self.worker.completed.connect(self.done)
         self.worker.failed.connect(self.failed)
@@ -142,7 +143,7 @@ class PublishDialog(QDialog):
     def finished(self):
         worker,self.worker=self.worker,None
         worker.deleteLater()
-        self.config.setEnabled(True);self.target.setEnabled(True)
+        self.config.setEnabled(True);self.target.setEnabled(True);self.choose_button.setEnabled(True)
         if self.closing:QTimer.singleShot(0,self.close)
         elif self.pending_cancel:
             self.pending_cancel=False;QTimer.singleShot(0,self.cancel_remote)
