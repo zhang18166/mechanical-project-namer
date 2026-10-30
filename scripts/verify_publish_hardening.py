@@ -277,6 +277,36 @@ def gui_case(f):
         d.close();QTest.qWait(50)
 
 
+def gui_targets_case(f):
+    from PyQt6.QtWidgets import QApplication
+    from PyQt6.QtTest import QTest
+    from mechanical_project_namer.ui.publish_dialog import PublishDialog
+    app=QApplication.instance() or QApplication([])
+    a,b=f.service('A'),f.service('B');ca=a.start();cb=b.start()
+    d=PublishDialog(f.snap,f.v1);d.config.setText(str(a.root/'publisher.json'));d.show();QTest.qWait(50)
+    def wait():
+        end=time.monotonic()+30
+        while d.worker:
+            assert time.monotonic()<end
+            QTest.qWait(20)
+    try:
+        d.publish();wait();assert '已提交' in d.status.text()
+        d.config.setText(str(b.root/'publisher.json'))
+        d.grab().save(str(f.root/'gui-switched-target.png'))
+        assert '已提交' not in d.status.text(),'A success leaked into B current state'
+        assert ca.config['service'] not in d.details.toPlainText()
+        d.query();wait();assert not cb.versions()
+        assert '已提交' not in d.status.text()
+        d.config.setText(str(a.root/'publisher.json'))
+        assert 'complete' in d.history.text() and '已提交' not in d.status.text()
+        a.stop();d.query();wait();assert '失败' in d.status.text()
+        assert 'complete' in d.history.text(),'retain historical confirmation'
+        assert '本次' in d.identity.text() and 'last_server_confirmation' in d.details.toPlainText()
+        f.assert_protected()
+        return dict(real_gui=True,B_not_published=True,no_stale_success=True,offline_history_labeled=True)
+    finally:d.close();QTest.qWait(30)
+
+
 def main():
     p=argparse.ArgumentParser();p.add_argument('--output',type=Path);p.add_argument('--scenario')
     p.add_argument('--worker-root',type=Path);p.add_argument('--task');p.add_argument('--config',type=Path);p.add_argument('--pid',type=Path)
@@ -293,6 +323,7 @@ def main():
         elif scenario=='cancel':result=cancel_case(f)
         elif scenario=='client-exit':result=client_exit_case(f)
         elif scenario=='gui':result=gui_case(f)
+        elif scenario=='gui-targets':result=gui_targets_case(f)
         elif scenario.startswith('boundary:'):
             from scripts.publish_boundary_cases import boundary
             result=boundary(f,scenario.split(':')[1])

@@ -56,19 +56,30 @@ class PublishDialog(QDialog):
         return Client(json.loads(path.read_bytes()),config_ref=str(path))
 
     def config_changed(self):
-        self.remote=None
+        self.remote=None;self.active_key=None
         self.identity.setText('尚未进行当前连接验证')
+        if hasattr(self,'status'):self.status.setText('当前目标尚未查询；历史确认不代表当前健康。')
+        if hasattr(self,'details'):self.details.clear()
         try:
             client=self.client();row=self.snapshots._get(self.task)
             self.active_key=self.ledger.key(client.config,self.snapshots.store_id,row['version_id'])
             old=self.ledger.get(self.active_key)
             if old:
                 self.remote=old['task']
-                self.history.setText(f'上次记录：{old["state"]}；上次服务确认时间戳 {old["confirmed_at"]}（不是当前健康确认）')
+                self.show_history(old)
             else:
                 self.history.setText('本目标尚无发布记录；其他服务成功不代表本服务已发布')
         except Exception:
             self.history.setText('配置尚未就绪；不读取正式凭据')
+
+    def show_history(self,old):
+        if not old:
+            self.history.setText('本实例对该目标尚无确认记录；其他服务成功不代表本服务已发布')
+            return
+        try:confirmation=json.loads(old['confirmed']) if old['confirmed'] else {}
+        except ValueError:confirmation={}
+        count=len(confirmation.get('verified',[]));total=len(confirmation.get('manifest',{}).get('files',[]))
+        self.history.setText(f'本地状态：{old["state"]}；上次服务确认：{confirmation.get("state","未确认")}，已确认 {count}/{total}；时间戳 {old["confirmed_at"]}（不是当前健康）')
 
     def choose(self):
         path,_=QFileDialog.getOpenFileName(self,'选择仓库外测试身份配置','','JSON (*.json)')
@@ -78,10 +89,21 @@ class PublishDialog(QDialog):
         if self.worker or self.closing:return
         try:
             client=self.client()
+            row=self.snapshots._get(self.task)
+            self.active_key=self.ledger.key(client.config,self.snapshots.store_id,row['version_id'])
+            old=self.ledger.get(self.active_key)
         except Exception:
-            self.status.setText('配置无效；仅使用维护脚本生成的仓库外测试配置。');return
+            self.status.setText('配置或本地版本记录无效；请重新选择隔离测试配置/版本。');return
+        key=self.active_key
+        self.show_history(old);self.details.clear()
         self.identity.setText(f'目标服务 {client.config["service"]} / 项目 {client.config["project"]}；当前连接待验证')
-        self.worker=SnapshotWorker(lambda cancel,progress:operation(client,cancel,progress),self)
+        def execute(cancel,progress):
+            try:return operation(client,cancel,progress)
+            except Exception as exc:
+                old=self.ledger.get(key)
+                if old:self.ledger.update(key,'cancelled' if old['state']=='cancelled' else 'failed',code=error_code(exc))
+                raise
+        self.worker=SnapshotWorker(execute,self)
         self.config.setEnabled(False);self.target.setEnabled(False)
         self.worker.progress.connect(self.status.setText)
         self.worker.completed.connect(self.done)
@@ -95,6 +117,13 @@ class PublishDialog(QDialog):
         if code=='local-operation-failed':code='transport-interrupted-retry'
         self.status.setText('失败/未完成：'+ERRORS.get(code,'操作未完成，请核对权限或查询后重试')+' ['+code+']')
         self.identity.setText('本次连接/完整性验证未成功；历史确认不代表当前健康')
+        try:old=self.ledger.get(self.active_key) if self.active_key else None
+        except Exception:old=None
+        self.show_history(old)
+        if old:
+            try:confirmation=json.loads(old['confirmed']) if old['confirmed'] else None
+            except ValueError:confirmation=None
+            self.details.setPlainText(json.dumps(dict(local_state=old['state'],last_server_confirmation=confirmation,error_code=code),ensure_ascii=False,indent=2))
 
     def done(self,result):
         if isinstance(result,dict) and result.get('task'):
@@ -107,8 +136,8 @@ class PublishDialog(QDialog):
             self.identity.setText('本次连接验证成功；版本健康以本次查询结果为准')
         self.details.setPlainText(json.dumps(result,ensure_ascii=False,indent=2))
         if self.active_key:
-            old=self.ledger.get(self.active_key)
-            if old:self.history.setText(f'上次记录：{old["state"]}；服务确认时间戳 {old["confirmed_at"]}')
+            try:self.show_history(self.ledger.get(self.active_key))
+            except Exception:self.history.setText('本地历史暂不可读；不据此判定远端状态。')
 
     def finished(self):
         worker,self.worker=self.worker,None

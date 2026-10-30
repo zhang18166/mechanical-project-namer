@@ -105,6 +105,10 @@ def test_real_fresh_client_after_hard_exit(tmp_path):
     scenario(tmp_path,'client-exit')
 
 
+def test_real_gui_target_state_does_not_reuse_success(tmp_path):
+    scenario(tmp_path,'gui-targets')
+
+
 @pytest.mark.parametrize('mode',['receive-space','receive-write','idle','total','bounded-partials','unknown-seal','competition','cancel-commit','download-interrupt','download-existing','download-overlap','download-space'])
 def test_real_boundary_matrix(tmp_path,mode):
     scenario(tmp_path,'boundary:'+mode)
