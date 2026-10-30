@@ -1,6 +1,7 @@
 # 项目长期约束
 
 - 发布协议仍为本机实验：`scripts/start_publish_server.ps1`、`scripts/stop_publish_server.ps1`、`scripts/dev_publish.ps1`，见[PHASE3C](docs/workbench/PHASE3C.md)。只绑定127.0.0.1，身份配置/服务数据在仓库外；不得把实验服务用于公网或生产。
+- 发布收尾见[PHASE3C.1](docs/workbench/PHASE3C1.md)。正式版本健康不得回退暂存；`.publish-state`是实例私有台账，不含令牌、不进入3B备份，恢复后须重新核对远端。
 
 - 在现有 Python/PyQt6 命名助手上增量开发；版本由 pyproject.toml 与包内 __version__ 保持一致，不按目录名判断。
 - 开发入口：`scripts/dev.ps1`；测试入口：`scripts/test_workbench.ps1`。真实 AI、Windows 凭据、SOLIDWORKS 联动须单独明确授权及验收，模拟测试不能替代。

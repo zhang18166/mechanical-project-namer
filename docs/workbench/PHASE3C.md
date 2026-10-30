@@ -1,5 +1,7 @@
 # Phase 3C：本机隔离发布协议验证
 
+后续缺陷修复和补充验收见[Phase3C.1收尾报告](PHASE3C1.md)。下文保留原Phase3C的PARTIAL历史，不将后续结果回填成当时已经通过。
+
 2026-10-30，**PARTIAL**。基于公开Phase3B `7962bc98e64747fb67221640b15d33e4206ee804`建立独立分支`codex/mechanical-workbench-phase3c-publish`。应用1.7.1、桌面Schema13不变；服务索引为独立SQLite，不共享桌面数据库。未部署腾讯云/飞牛，不创建正式账号、PR、Release或安装包。Phase2D继续PARTIAL，STEP普通模式不解锁。
 
 ## 实现范围

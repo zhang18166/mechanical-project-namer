@@ -1,5 +1,7 @@
 # 机械项目命名助手 V1.7.1
 
+本分支完成 **Phase3C.1：本机隔离发布协议范围PASS**；809测试、MB级真实GUI断流/恢复、180轮30分钟资源验收及范围见[PHASE3C1](docs/workbench/PHASE3C1.md)。启动入口`scripts/dev_publish.ps1`，默认使用工作树外独立数据目录；不连接腾讯云/飞牛，不代表生产放行。下方Phase3C的PARTIAL保留为历史说明。
+
 本分支新增 **Phase3C本机回环发布实验，PARTIAL**，见[PHASE3C](docs/workbench/PHASE3C.md)。独立测试服务/客户端启动停止脚本在该文档中；仅虚构数据，不连接真实腾讯云/飞牛，不作为公网服务。下方保留Phase3B使用说明及其限定验收，不能据此将3C或2D标为PASS。
 
 当前新增 **Phase 3B：离线归档库配套备份与整体恢复**，范围、格式、维护模式及验收见 [PHASE3B](docs/workbench/PHASE3B.md)。继承 [Phase 3A](docs/workbench/PHASE3A.md)；**Phase 2D仍为PARTIAL**，内存趋势、并发诊断超时和STEP补丁问题保持未关闭，见 [PHASE2D](docs/workbench/PHASE2D.md)。在本阶段独立工作树执行：
