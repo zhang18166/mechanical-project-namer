@@ -80,7 +80,16 @@ def boundary(f,case):
         c=session.target.connection();statuses=Counter();started=time.monotonic()
         try:
             for _ in range(160):
-                c.request('GET','/health');r=c.getresponse();r.read(8192);statuses[r.status]+=1
+                if c.sock is None:
+                    c.close()
+                    # This fixed-size rate probe sends public health only. A
+                    # closed connection gets an explicit fresh verified TLS
+                    # channel, never implicit reconnection of a credentialled
+                    # business operation after its earlier UUID check.
+                    c=http.client.HTTPSConnection('127.0.0.1',s.port,context=session.target.context,timeout=3)
+                    c.connect();c.auto_open=0
+                c.request('GET','/health');r=c.getresponse();body=r.read(8192);statuses[r.status]+=1
+                if r.status==200:assert json.loads(body)['service']==s.connection['service']
         finally:c.close()
         assert statuses[429]>0 and statuses[200]>0,statuses
         assert not set(statuses)-{200,429,503},statuses

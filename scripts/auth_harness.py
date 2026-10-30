@@ -73,8 +73,9 @@ class ManagedService:
         if check and r.returncode:raise RuntimeError('maintenance-cli-failed')
         return r.stdout.decode('utf-8').strip() if check else r.returncode
 
-    def native(self,code,*args,input=None):
-        r=subprocess.run(self.base()+['-c',code,*args],cwd=ROOT,input=input,capture_output=True,timeout=30)
+    def native(self,code,*args,input=None,timeout=30):
+        if not 0<timeout<=30:raise ValueError('native-operation-budget')
+        r=subprocess.run(self.base()+['-c',code,*args],cwd=ROOT,input=input,capture_output=True,timeout=timeout)
         if r.returncode:raise RuntimeError('native-test-operation-failed')
         return r.stdout.decode('utf-8').strip()
 

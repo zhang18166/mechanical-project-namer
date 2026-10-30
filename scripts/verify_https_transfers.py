@@ -43,35 +43,23 @@ def verify_download(f,client,state):
 
 
 def restart_after_fault(service):
-    """A restart is not a guarantee that WSL's host-side bridge is ready.
+    """One startup with separate native/Windows readiness; no layered retries.
 
-    At most one fresh, fully verified public health retry, only after a native
-    health check proves the same new instance survived. Never replay a login,
-    administrative mutation, upload, or commit; never waive TLS verification.
+    The shared public readiness operation caps fresh TLS/UUID attempts at two
+    inside a single ten-second budget. No credential/mutation replay occurs.
     """
-    try:
-        service.start()
-        return dict(host_health_attempts=1)
-    except TimeoutError:
-        if service.process.poll() is not None:raise
-        result=subprocess.run(service.base()+['-m','scripts.https_runtime','check','--runtime',service.runtime],
-                              cwd=ROOT,capture_output=True,timeout=12)
-        assert result.returncode==0
-        identity=json.loads(result.stdout)
-        assert identity['service']==service.connection['service'] and identity['accounts']
-        pid=service.pid;proxy=service.proxy_pid
-        service.session()  # One bounded fresh TLS/UUID check; error propagates.
-        assert (service.pid,service.proxy_pid)==(pid,proxy)
-        return dict(host_health_attempts=2,first_host_handshake_timeout=True,native_health_confirmed=True)
+    service.start()
+    return dict(host_health_attempts=service.public_result['attempts'],windows_verified=service.windows_ready)
 
 
-def gui(f):
+def gui(f,restart_proxy=False):
     from PyQt6.QtWidgets import QApplication
     from PyQt6.QtTest import QTest
     from PyQt6.QtCore import Qt
     from mechanical_project_namer.ui.project_files_page import ProjectFilesPage
     import os
-    app=QApplication([]);os.environ['MECHANICAL_PROJECT_NAMER_DEV_ROOT']=str(f.a.root/'client')
+    app=QApplication([]);assert app.platformName()=='windows'
+    os.environ['MECHANICAL_PROJECT_NAMER_DEV_ROOT']=str(f.a.root/'client')
     page=ProjectFilesPage(f.a.repo);page.resize(1100,800);page.show();QTest.qWait(50)
     QTest.mouseClick(page.account_button,Qt.MouseButton.LeftButton);d=page.account_window
     d.snapshots=f.a.snap;d.local_changed();d.connection.setText(str(f.service.root/'connection.json'))
@@ -86,9 +74,25 @@ def gui(f):
         click(d.refresh_button);wait();d.projects.setCurrentRow(next(i for i,p in enumerate(d.project_rows) if p['id']==f.pa));wait()
         d.local_version.setCurrentIndex(d.local_version.findData(f.a.v1));click(d.publish_button);wait()
         v1=json.loads(d.details.toPlainText());assert v1['healthy']
-        f.service.set_control(action='disconnect-upload',file=1,after_bytes=262144,nonce=str(uuid.uuid4()),trace_chunks=True)
-        d.local_version.setCurrentIndex(d.local_version.findData(f.task));click(d.publish_button);wait(True)
+        previous_events=[]
+        if restart_proxy:f.service.set_control(delay_per_chunk=.05,trace_chunks=True)
+        else:f.service.set_control(action='disconnect-upload',file=1,after_bytes=262144,nonce=str(uuid.uuid4()),trace_chunks=True)
+        d.local_version.setCurrentIndex(d.local_version.findData(f.task));click(d.publish_button)
+        if restart_proxy:
+            end=time.monotonic()+15;observed=None
+            while time.monotonic()<end:
+                QTest.qWait(30)
+                samples=[e for e in f.service.events() if e['event']=='upload-bytes' and e.get('task')!=v1['task'] and e.get('file')==1 and 0<e['received']<e['size']]
+                if samples:observed=samples[-1];break
+            assert observed,'No application-side partial upload observed'
+            f.service.hard_exit('proxy')
+            previous_events=f.service.events()
+        wait(True)
+        assert not d.current_confirmed and '当前未确认' in d.confirmation_label.text()
         d.grab().save(str(f.root/'gui-interrupted.png'))
+        if restart_proxy:
+            restart_after_fault(f.service)
+            assert f.service.windows_ready
         client=d.session.publisher(f.pa);remote=task_id(f,client)
         pending=wait_idle(client,remote);assert pending['state']=='receiving' and pending['verified']==[0]
         f.service.set_control(trace_chunks=True)
@@ -99,13 +103,17 @@ def gui(f):
         d.download_target.setText(str(f.root/'gui-download'));click(d.download_button);wait()
         for item in state['manifest']['files']:assert digest(f.root/'gui-download'/item['path'])=={k:item[k] for k in ('size','sha256')}
         versions=client.versions();assert len(versions)==2 and next(v for v in versions if v['task']==v1['task'])==v1
-        events=f.service.events();starts=Counter(e['file'] for e in events if e['event']=='upload-start' and e['task']==remote)
+        events=previous_events+f.service.events();starts=Counter(e['file'] for e in events if e['event']=='upload-start' and e['task']==remote)
         ends=[e for e in events if e['event']=='upload-end' and e['task']==remote and e['file']==1]
         assert dict(starts)=={0:1,1:2,2:1,3:1},starts
         received=ends[0]['received'];assert 0<received<4*1024**2
         click(d.logout_button);wait();f.protect()
+        import sys
+        assert not any(n.startswith(('PyQt6.QtWebEngine','PyQt6.QtPdf','OCP','win32com')) for n in sys.modules)
         return dict(real_windows_gui=True,interrupted_received=received,file_total=4*1024**2,requests=dict(starts),
-                    task=remote,v1_unchanged=True,one_v2=True,download_hashes=True)
+                    task=remote,v1_unchanged=True,one_v2=True,download_hashes=True,qt_platform=app.platformName(),
+                    failure_kind='proxy-process-exit' if restart_proxy else 'upload-disconnect',
+                    original_task_resumed=True,unconfirmed_while_failed=True,preview_engines_not_loaded=True)
     finally:d.close();page.close();QTest.qWait(50)
 
 
@@ -196,7 +204,7 @@ def main():
     p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--case',required=True);a=p.parse_args()
     f=fixture(a.output,large=True)
     try:
-        result=gui(f) if a.case=='gui' else fault(f,a.case)
+        result=gui(f,a.case=='gui-reconnect') if a.case in ('gui','gui-reconnect') else fault(f,a.case)
         report=dict(passed=True,real_https=True,result=result);(f.root/'report.json').write_bytes(data(report));print('HTTPS transfer acceptance passed:',a.case)
     finally:f.close()
 

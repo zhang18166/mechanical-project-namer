@@ -9,6 +9,7 @@ import logging
 import os
 import shutil
 import sqlite3
+import stat
 import sys
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -335,6 +336,7 @@ class PublishService:
         control.checkpoint('receive-space')
         s.room(n)
         h, received = hashlib.sha256(), 0
+        partial_identity = None
         cfg = control.config()
         idle = min(10, max(.1, cfg.get('idle_timeout', 10)))
         deadline = time.monotonic()+min(30, max(.1, cfg.get('total_timeout', 30)))
@@ -342,6 +344,8 @@ class PublishService:
         try:
             control.checkpoint('receive-write')
             with tmp.open('xb') as stream:
+                created = os.fstat(stream.fileno())
+                partial_identity = (created.st_dev, created.st_ino)
                 while received < n:
                     left = deadline-time.monotonic()
                     if left <= 0:
@@ -382,7 +386,24 @@ class PublishService:
                 raise Disconnect()
             return self.reply(200, {'verified': i})
         finally:
-            control.event('upload-end', task=row['id'], file=i, received=received, size=n)
+            try:
+                control.event('upload-end', task=row['id'], file=i, received=received, size=n)
+            finally:
+                # File-level retry never reuses incomplete bytes. Clean only
+                # this attempt's still-identical bounded incomplete file,
+                # while the actual worker still owns the serial task lease.
+                # Hard exits bypass finally and retain the existing receipt-
+                # checked recovery path. Never touch a verified target/history.
+                # Preserve the existing one-per-file bounded diagnostic sample
+                # for a fully received hash mismatch; the next receipt-checked
+                # retry replaces it. Do not silently change that protocol.
+                if partial_identity is not None and received < n and tmp.exists():
+                    current = tmp.lstat()
+                    if (not stat.S_ISREG(current.st_mode) or current.st_size > n
+                            or (current.st_dev,current.st_ino) != partial_identity):
+                        raise ProtocolError('partial-cleanup-ownership')
+                    s.owned(row,'receiving',folder)
+                    discard_owned_partial(tmp)
 
     def dispatch(self, method):
         try:

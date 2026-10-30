@@ -1,5 +1,7 @@
 # 项目长期约束
 
+- HTTP收尾：[PHASE4C1](docs/workbench/PHASE4C1.md)。Linux就绪不代替Windows验证，公开health最多两次/总10秒，不自动重放写操作；按连接区分代理归属、内核队列和客户端缓冲。诊断显式启用且脱敏封顶，绝对前端期限未验不得放行公网。
+
 - HTTPS隔离入口：`mechanical_project_namer.asgi_server`、`scripts/https_runtime.py`，见[PHASE4C](docs/workbench/PHASE4C.md)、[运行/证书/并发边界](docs/workbench/HTTPS_ISOLATION.md)。只用私有UDS、单worker及显式有界业务执行、目标专属CA；旧HTTP必须显式隔离，不能TLS失败回退。Nginx空闲超时不冒充绝对总寿命，不自动公网部署。
 
 - 服务端配套备份/恢复：`python -m mechanical_project_namer.server_recovery`，见[PHASE4B](docs/workbench/PHASE4B.md)、[维护说明](docs/workbench/SERVER_RECOVERY.md)。服务schema3防旧加载器忽略恢复门禁；停服、独占租约、新目录恢复、旧会话全撤销，完整人工安全审核后才能放行；不得用桌面3B备份替代服务端目录集。

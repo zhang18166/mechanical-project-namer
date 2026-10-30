@@ -28,7 +28,7 @@ for role,pid in [('application',sys.argv[1]),('proxy',sys.argv[2])]:
   fd=len(links),threads=int(s['Threads']),sockets=len(inodes),tcp=sum(row[9] in inodes for row in tcp))
 files=[p for root in sys.argv[3:] for p in pathlib.Path(root).rglob('*') if p.is_file()]
 out['disk']=dict(files=len(files),bytes=sum(p.stat().st_size for p in files),
- partial=sum(p.name.endswith(('.partial','.copy')) for p in files),
+ partial=sum(p.name.endswith(('.partial','.copy','.pending')) for p in files),
  temp=sum('client-temp' in p.parts or 'proxy-temp' in p.parts for p in files))
 print(json.dumps(out))'''
     return json.loads(service.native(code,str(service.pid),str(service.proxy_pid),service.data_root,service.runtime))
@@ -38,7 +38,7 @@ def client_disk(root):
     """Only this finite fictional client/evidence tree; never production paths."""
     files=[p for p in root.rglob('*') if p.is_file()]
     return dict(files=len(files),bytes=sum(p.stat().st_size for p in files),
-                partial=sum(p.name.endswith(('.partial','.copy','.tmp')) for p in files),
+                partial=sum(p.name.endswith(('.partial','.copy','.tmp','.pending')) for p in files),
                 log_bytes=sum(p.stat().st_size for p in files if p.suffix in ('.log','.jsonl')),
                 ledger_bytes=sum(p.stat().st_size for p in files if '.publish-state' in p.parts),
                 database_bytes=sum(p.stat().st_size for p in files if p.suffix=='.sqlite'))
@@ -52,7 +52,8 @@ def run(root,seconds):
                 disk_growth_MiB=8,client_disk_growth_MiB=8,temp_files=0,download_GiB=4,fixed_versions=1,no_restart=True,no_gc=True,no_cleanup=True)
     (root.parent/(root.name+'-budget.json')).write_bytes(data(budget))
     source=list((ROOT/'mechanical_project_namer').rglob('*.py'))+list(ROOT.glob('requirements-*.lock'))
-    source+=[ROOT/'scripts'/n for n in ('https_runtime.py','https_harness.py','verify_https_resources.py','publish_metrics.py','auth_harness.py','publish_harness.py')]
+    source+=list((ROOT/'scripts').glob('*.py'))+list((ROOT/'scripts').glob('*.ps1'))
+    source+=list((ROOT/'tests').glob('*.py'))+[ROOT/'pyproject.toml']
     hashes={str(p):digest(p) for p in source}
     f=fixture(root,large=True);records=[];errors=[];rejects=0;downloaded=0
     (root/'budget.json').write_bytes(data(budget));(root/'code.json').write_bytes(data(hashes))

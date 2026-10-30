@@ -10,6 +10,8 @@ from scripts.auth_harness import ManagedService,AuthFixture,ROOT,linux_path
 from scripts.publish_harness import write
 from mechanical_project_namer.account_client import AccountSession
 from mechanical_project_namer.publish_protocol import data
+from mechanical_project_namer.transport import Target
+from mechanical_project_namer.diagnostics import Trace
 
 
 def environment():
@@ -26,6 +28,31 @@ class HTTPSService(ManagedService):
         self.port=int(self.native("import socket;s=socket.socket();s.bind(('127.0.0.1',0));print(s.getsockname()[1]);s.close()"))
 
     def start(self):
+        self.windows_ready=False
+        self.ready_info={}
+        diagnostic=Trace(self.root/('connection-'+uuid.uuid4().hex+'.jsonl')) if getattr(self,'diagnostics',False) else None
+        started=time.monotonic()
+        try:
+            result=self._start(diagnostic)
+            self.windows_ready=True
+            self.windows_status=dict(scope='windows-tls-uuid',verified=True,seconds=time.monotonic()-started,
+                                     native_scope=self.ready_info['scope'],attempts=self.public_result['attempts'])
+            return result
+        except Exception:
+            self.windows_status=dict(scope='windows-tls-uuid',verified=False,seconds=time.monotonic()-started,
+                                     linux_marker_observed=bool(self.ready_info))
+            if diagnostic:diagnostic.emit('windows-readiness-failed',ready=False,code='startup-or-public-health-failed')
+            # Do not orphan a healthy native service when host verification
+            # fails during fixture construction. Cleanup is not a ready result.
+            if self.process and self.process.poll() is None:
+                if self.ready_info:self.stop()
+                else:self.process.wait(45)  # Native startup/finally already has bounded cleanup.
+            raise
+        finally:
+            write(self.root/('windows-readiness-'+uuid.uuid4().hex+'.json'),self.windows_status)
+            if diagnostic:diagnostic.close()
+
+    def _start(self,diagnostic):
         self.runtime=os.environ['MW_ACCOUNT_TEST_ROOT']+'/r-'+uuid.uuid4().hex[:12]
         self.cert_root=self.runtime+'-certs'
         self.native("import pathlib,sys;pathlib.Path(sys.argv[1]).mkdir(mode=0o700)",self.cert_root)
@@ -37,6 +64,7 @@ class HTTPSService(ManagedService):
               '--nginx',os.environ['MW_HTTPS_TEST_NGINX'],'--port',str(self.port),'--cert',self.cert_root+'/valid.pem',
               '--key',self.cert_root+'/valid.key','--ca',self.cert_root+'/ca.pem']
         if os.environ.get('MW_HTTPS_TEST_LIBDIR'):args+=['--tls-library-dir',os.environ['MW_HTTPS_TEST_LIBDIR']]
+        if diagnostic:args+=['--diagnostics']
         r=subprocess.run(self.base()+args,cwd=ROOT,capture_output=True,timeout=15)
         if r.returncode:raise RuntimeError('https-runtime-prepare-failed')
         self.control=self.runtime+'/control.json';self.events_path=self.runtime+'/events.jsonl'
@@ -47,7 +75,8 @@ class HTTPSService(ManagedService):
         while True:
             if self.process.poll() is not None:
                 raise RuntimeError('https-runtime-start-failed')
-            v=self.native("import pathlib,sys;p=pathlib.Path(sys.argv[1]);print(p.read_text() if p.exists() else '{}')",self.runtime+'/ready.json')
+            v=self.native("import pathlib,sys;p=pathlib.Path(sys.argv[1]);print(p.read_text() if p.exists() else '{}')",self.runtime+'/ready.json',
+                          timeout=max(.01,end-time.monotonic()))
             try:
                 parsed=json.loads(v)
             except json.JSONDecodeError:
@@ -56,14 +85,12 @@ class HTTPSService(ManagedService):
             if time.monotonic()>end:raise RuntimeError('https-ready-timeout')
             time.sleep(.05)
         self.ready_info=json.loads(v);self.pid=self.ready_info['application'];self.proxy_pid=self.ready_info['proxy']
+        assert self.ready_info['scope']=='linux-local-tls' and self.ready_info['linux_https_verified']
+        assert self.ready_info['unix_verified'] and self.ready_info['windows_verified'] is False
         self.connection=dict(url='https://127.0.0.1:'+str(self.port),service=self.ready_info['service'],ca=str(certificates/'ca.pem'))
         write(self.root/'connection.json',self.connection)
-        end=time.monotonic()+10
-        while True:
-            try:return self.session()
-            except OSError:
-                if time.monotonic()>end:raise
-                time.sleep(.05)
+        self.public_result=Target(self.connection).public_ready(diagnostic=diagnostic,scenario=self.ready_info['instance'].replace('-',''))
+        return AccountSession(self.connection)
 
     def session(self):
         session=AccountSession(self.connection);session.verify_service();return session
@@ -85,6 +112,7 @@ class HTTPSService(ManagedService):
         return [json.loads(line) for line in result.splitlines()]
 
     def stop(self):
+        self.windows_ready=False
         if not self.process:return
         if self.process.poll() is None:
             r=subprocess.run(self.base()+['-m','scripts.https_runtime','stop','--runtime',self.runtime],cwd=ROOT,capture_output=True,timeout=45)
@@ -93,6 +121,7 @@ class HTTPSService(ManagedService):
         self.process=None
 
     def hard_exit(self,role):
+        self.windows_ready=False
         pid=self.pid if role=='application' else self.proxy_pid
         marker=b'mechanical_project_namer.asgi_server' if role=='application' else self.runtime.encode()
         code="import os,sys,signal;p='/proc/'+sys.argv[1];assert os.stat(p).st_uid==os.geteuid();assert bytes.fromhex(sys.argv[2]) in open(p+'/cmdline','rb').read();os.kill(int(sys.argv[1]),signal.SIGKILL)"
@@ -100,5 +129,9 @@ class HTTPSService(ManagedService):
         self.process.wait(45);self.process=None
 
 
-def fixture(root,platform='linux',large=False):
-    return AuthFixture(root,'linux',large,service_class=HTTPSService)
+class DiagnosticHTTPSService(HTTPSService):
+    diagnostics=True
+
+
+def fixture(root,platform='linux',large=False,*,diagnostics=False):
+    return AuthFixture(root,'linux',large,service_class=DiagnosticHTTPSService if diagnostics else HTTPSService)

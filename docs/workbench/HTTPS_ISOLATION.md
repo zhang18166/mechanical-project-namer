@@ -2,9 +2,11 @@
 
 仅在现有专用Ubuntu22.04测试环境、普通用户和仓库外私有目录运行。不是腾讯云部署模板；不修改系统Nginx、WSL默认发行版、hosts、根证书、代理或防火墙。应用1.7.1、桌面Schema13、服务账号schema3不变。依赖版本、哈希和许可证见[第三方记录](../../third_party/https/README.md)。
 
+Phase4C.1收尾见[PHASE4C1](PHASE4C1.md)，独立工作树为`<开发根>/_worktrees/mechanical-workbench-phase4c-hardening`；原4C历史树保留。新入口的慢下载绝对期限仍未实现，不能因有限案例释放就放行公网。下面启动命令沿用同一条Nginx/UDS/Uvicorn路线；各自工作树以Git实际结果为准。
+
 ## 准备
 
-下面均为占位路径，不可照抄成真实生产目标。工作树以`git rev-parse --show-toplevel`、`git worktree list`的实际结果为准，路径段为`<开发根>/_worktrees/mechanical-workbench-phase4c-https`。
+下面均为占位路径，不可照抄成真实生产目标。工作树以`git rev-parse --show-toplevel`、`git worktree list`的实际结果为准，本次收尾路径段为`<开发根>/_worktrees/mechanical-workbench-phase4c-hardening`。
 
 在Windows独立venv安装原锁定桌面依赖；测试证书工具另行安装，不是基础命名功能的依赖：
 
@@ -52,7 +54,11 @@
 
 从WSL外调用时显式指定专用发行版和普通用户，并在进程级传`PYTHONPATH=<工作树Linux路径>`；不更改默认发行版。`run`是前台自建实例，不是系统服务。只有Nginx监听127.0.0.1高端口，应用仅监听0700目录下的0600 Unix socket。启动取得既有服务UUID租约及索引独占锁。ready保存真实应用/代理/监督PID与实例身份；停止核对UID、命令行中的独立运行目录，等待有界退出，不按进程名全局杀程序。崩溃后新建运行prefix，旧目录保留，既有数据库和发布任务通过原协议恢复，不自动接管未知残留socket。
 
-`check`表示进程及逻辑服务身份可达，不表示所有版本健康或维护门禁已放行。恢复服务仍必须按[4B本地审核](SERVER_RECOVERY.md)放行。普通用户关闭、管理员HTTP只读，TLS可达也不能绕过。
+`check`校验实例、PID启动时间/UID/命令行及新的TLS/业务身份，不表示所有版本健康或维护门禁已放行。Linux就绪标记原子、排他发布，只表示应用/UDS/代理监听及Linux本机TLS成功，明确`windows_verified=false`；它不是Windows链路成功的证明。Windows端另做真实TLS/UUID检查后才确认。历史ready文件及PID错配不能冒充当前存活实例，新脚本也不接管旧4C的运行prefix；旧实例用对应旧工作树的命令停止。恢复服务仍必须按[4B本地审核](SERVER_RECOVERY.md)放行。普通用户关闭、管理员HTTP只读，TLS可达也不能绕过。
+
+准备/CLI步骤各自有界，应用及代理本机启动从创建应用开始预算15秒，宿主等待Linux完整标记20秒，Windows公开检查另用10秒总预算；失败清理有独立退出预算，不能把整个初始化耗时冒充一次TLS耗时。`Target.public_ready`至多两次全新公开GET检查、共10秒，TCP/TLS/响应各阶段共享剩余时间；证书、主机名、UUID及非法health立即失败。不重试登录、开户、授权、改密或提交。就绪后的普通业务连接仍逐次真实验证，连接失效不允许隐式重连后沿用先前UUID检查。
+
+需要脱敏阶段诊断时，在上面`prepare`命令额外加`--diagnostics`，默认关闭。只在该私有prefix创建启动/应用事件及Nginx→Unix数据报收集器，各文件1MiB/4096事件封顶；只记录关联ID、阶段、错误码、PID、端口、必要时序与计数。无URL、认证头、正文或私钥，无TLS密钥导出。正常关闭只处理本实例进程；组件单独意外退出会关闭另一组件并使监督器失败退出，历史ready仍可保留供诊断，但不能继续通过存活检查。不要用定期重启当慢连接保护。
 
 ## Windows客户端
 
@@ -86,7 +92,7 @@
 
 请求取消不等于线程停止：业务准入只由实际工作线程完成回调释放，重复取消也不能提前放行下一写操作。上传中管理/取消请求可能忙时拒绝，应待当前有界操作结束后重试；已接受的撤权会在后续请求及最终commit再判断。文件传输中断可继续同任务，显式取消任务不得自动复活，已经提交的版本不删除。不会承诺收回已经发送的文件字节。
 
-Nginx上传和下载缓冲均off，proxy临时文件上限0、共享缓存off、非幂等上游自动重试off。应用按64KiB流式读写和哈希；单文件16MiB、版本64MiB、100文件及仓库256MiB不扩大。JSON一般8KiB、任务清单2MiB，响应JSON2MiB，头部2×8KiB、头等待5秒。应用上传空闲≤10秒/总量≤30秒、账号JSON总量5秒；客户端上传/下载总量30秒，JSON响应总量10秒；代理空闲读写10秒、上游读35秒。服务索引及WAL达到64MiB后拒绝新业务并要求维护，不清空审计；单请求可能产生小幅越界，非文件系统硬配额。访问日志和代理错误日志均关闭，不记录请求体/凭据/私有路径；业务安全审计保留在私有索引，容量不足受控停止。
+Nginx上传和下载缓冲均off，proxy临时文件上限0、共享缓存off、非幂等上游自动重试off。应用按64KiB流式读写和哈希；单文件16MiB、版本64MiB、100文件及仓库256MiB不扩大。JSON一般8KiB、任务清单2MiB，响应JSON2MiB，头部2×8KiB、头等待5秒。应用上传空闲≤10秒/总量≤30秒、账号JSON总量5秒；客户端上传/下载总量30秒，JSON响应总量10秒；代理空闲读写10秒、上游读35秒。服务索引及WAL达到64MiB后拒绝新业务并要求维护，不清空审计；单请求可能产生小幅越界，非文件系统硬配额。访问日志和代理错误日志默认关闭，不记录请求体/凭据/私有路径；显式诊断只启用上述封顶白名单事件，不代替业务安全审计。业务审计保留在私有索引，容量不足受控停止。
 
 Host、方法、Origin明确限制，Nginx移除伪造Forwarded/X-Forwarded-For/X-Real-IP/转发Host后设置固定https；应用不启用Uvicorn代理头信任。信任来自私有socket及同UID私有目录，不把任意本机连接当身份，不宣称隔离同一OS账号或本机管理员。所有文件仍经授权及正式版本健康检查，没有静态存储路由。恢复备份仍只取4B白名单，HTTPS私钥、CA、日志和运行配置不混入备份。
 
@@ -104,6 +110,11 @@ Host、方法、Origin明确限制，Nginx移除伪造Forwarded/X-Forwarded-For/
 .\.venv\Scripts\python.exe -m scripts.verify_https_transfers --case gui --output <新断流GUI证据目录>
 .\.venv\Scripts\python.exe -m scripts.verify_https_recovery --output <新整体恢复证据目录>
 .\.venv\Scripts\python.exe -m scripts.verify_https_resources --seconds 1800 --output <新资源证据目录>
+# 4C.1：每次选一个场景串行执行，预算及原始记录均放仓库外。
+.\.venv\Scripts\python.exe -m scripts.verify_https_connections --case download-trickle --output <新连接证据目录>
+.\.venv\Scripts\python.exe -m scripts.verify_https_restarts --role application --mode normal --rounds 20 --output <新重启证据目录>
+.\.venv\Scripts\python.exe -m scripts.verify_https_reconnect --case paused-proxy --output <新有限恢复证据目录>
+.\.venv\Scripts\python.exe -m scripts.verify_https_transfers --case gui-reconnect --output <新GUI恢复证据目录>
 ```
 
 `--control`只在隔离验收监督进程明确提供时传给`asgi_server --isolated-test`；正常运行省略，客户端HTTP没有故障配置API。硬退出、存储错误和磁盘空间故障只作用于本轮自建进程/虚构目录，不能称断电认证。详见[本轮结果](PHASE4C.md)。
