@@ -18,6 +18,7 @@ from .publish_server import Store
 
 PERMISSIONS = {'metadata_view','preview_view','pdf_view','source_download','version_publish','project_manage'}
 ROLES = {'admin','designer','reader'}  # guest reserved; never anonymous
+ACCOUNT_SCHEMA = '3'  # Older loaders must refuse recovery-gated instances.
 HASHER = PasswordHasher(time_cost=3,memory_cost=65536,parallelism=4,hash_len=32,salt_len=16,type=Type.ID)
 
 
@@ -50,18 +51,32 @@ class AccountStore(Store):
         self.actor=None
         index=safe(config['index'])
         for p in [index,safe(config['storage'])]:
-            if any((a/'.git').exists() for a in p.parents):
+            if any((a/'.git').exists() for a in (p,*p.parents)):
                 raise ProtocolError('external-service-data-required')
+        if not index.exists() and (safe(config['storage'])/'.publish-owner.json').exists():
+            raise ProtocolError('missing-index-recovery-required')
         if index.exists():
-            old=sqlite3.connect(index.as_uri()+'?mode=ro',uri=True)
+            # Opening an existing index in rw (never create) lets SQLite recover
+            # a hot rollback journal after a killed writer before schema reads.
+            old=sqlite3.connect(index.as_uri()+'?mode=rw',uri=True)
             try:
                 tables={r[0] for r in old.execute("SELECT name FROM sqlite_master WHERE type='table'")}
                 if 'schema_meta' in tables or (tables and 'tasks' not in tables):
                     raise ProtocolError('not-a-service-index')
                 if 'account_meta' in tables:
                     row=old.execute("SELECT value FROM account_meta WHERE key='schema'").fetchone()
-                    if not row or row[0]!='2':raise ProtocolError('unsupported-account-index-schema')
-                migrate='account_meta' not in tables
+                    if not row or row[0] not in ('2',ACCOUNT_SCHEMA):raise ProtocolError('unsupported-account-index-schema')
+                    meta=dict(old.execute('SELECT key,value FROM account_meta'))
+                    if meta.get('service',config['service'])!=uid(config['service']):raise ProtocolError('index-service-mismatch')
+                    if row[0]==ACCOUNT_SCHEMA:
+                        if not {'service','instance','recovery_gate'}<=meta.keys() or meta['recovery_gate'] not in ('open','closed'):
+                            raise ProtocolError('invalid-recovery-metadata')
+                        uid(meta['instance'])
+                        if meta['recovery_gate']=='closed':uid(meta.get('recovery_id'))
+                        if meta['recovery_gate']=='open' and 'recovery_id' in meta and 'recovery_review' not in meta:
+                            raise ProtocolError('unreviewed-recovery-state')
+                else:meta={}
+                migrate=meta.get('schema')!=ACCOUNT_SCHEMA
                 if migrate:
                     folder=index.parent/'migration-backups';folder.mkdir(exist_ok=True)
                     target=safe(folder/('before-accounts-'+uuid.uuid4().hex+'.sqlite'))
@@ -83,12 +98,21 @@ class AccountStore(Store):
                 'CREATE TABLE IF NOT EXISTS auth_audit(id INTEGER PRIMARY KEY,actor TEXT,action TEXT NOT NULL,target TEXT,details TEXT NOT NULL,created_at TEXT NOT NULL)',
                 'CREATE TABLE IF NOT EXISTS task_provenance(task TEXT PRIMARY KEY REFERENCES tasks(id),publisher TEXT REFERENCES users(id),accepted_at TEXT,published_at TEXT)']
             for sql in statements:c.execute(sql)
-            c.execute("INSERT OR IGNORE INTO account_meta VALUES ('schema','2')")
+            c.execute("INSERT OR IGNORE INTO account_meta VALUES ('schema',?)",(ACCOUNT_SCHEMA,))
+            c.execute("UPDATE account_meta SET value=? WHERE key='schema'",(ACCOUNT_SCHEMA,))
+            c.execute("INSERT OR IGNORE INTO account_meta VALUES ('service',?)",(uid(config['service']),))
+            c.execute("INSERT OR IGNORE INTO account_meta VALUES ('instance',?)",(str(uuid.uuid4()),))
+            c.execute("INSERT OR IGNORE INTO account_meta VALUES ('recovery_gate','open')")
             for key,mapping in config.get('projects',{}).items():
                 c.execute("INSERT OR IGNORE INTO remote_projects VALUES (?,?,?,'active',?,?,?)",
                           (uid(key),'旧索引项目','迁移来源；原发布者/时间未知',uid(mapping['store']),mapping['local_project'],stamp()))
             self.checkpoint('migration')
         self.refresh_projects()
+
+    def recovery_state(self):
+        with self.db() as c:meta=dict(c.execute('SELECT key,value FROM account_meta'))
+        if meta.get('recovery_gate') not in ('open','closed'):raise ProtocolError('invalid-recovery-gate')
+        return dict(instance=uid(meta['instance']),maintenance=meta['recovery_gate']=='closed',recovery=meta.get('recovery_id'))
 
     def db(self):
         c=super().db()
@@ -129,12 +153,13 @@ class AccountStore(Store):
         with self.db() as c:
             c.execute('BEGIN IMMEDIATE')
             row=c.execute('SELECT * FROM users WHERE username=?',(name,)).fetchone()
+            gate=c.execute("SELECT value FROM account_meta WHERE key='recovery_gate'").fetchone()[0]
             limit=c.execute('SELECT * FROM login_limits WHERE subject=?',(subject,)).fetchone()
             now=self.clock()
             blocked=bool(limit and limit['failures']>=5 and limit['until']>now)
             try:valid=HASHER.verify(row['password_hash'] if row else self.dummy,secret)
             except (VerificationError,InvalidHashError):valid=False
-            if not row or not valid or not row['enabled'] or row['role']=='guest' or blocked:
+            if not row or not valid or not row['enabled'] or row['role']=='guest' or blocked or (gate!='open' and row['role']!='admin'):
                 count=limit['failures']+1 if limit and limit['until']>now else 1
                 if limit or row or c.execute('SELECT count(*) FROM login_limits').fetchone()[0]<4096:
                     c.execute('INSERT OR REPLACE INTO login_limits VALUES (?,?,?)',(subject,count,now+min(300,max(1,int(self.config.get('login_window',60)))) if not limit or limit['until']<=now else limit['until']))
@@ -164,6 +189,7 @@ class AccountStore(Store):
                           (hashlib.sha256(token.encode()).hexdigest(),)).fetchone()
         if not row or row['expires']<=self.clock() or not row['enabled'] or row['generation']!=row['session_generation'] or row['role']=='guest':
             raise PermissionError()
+        if self.recovery_state()['maintenance'] and row['role']!='admin':raise PermissionError()
         return dict(row)
 
     def require_admin(self,person):
@@ -171,6 +197,10 @@ class AccountStore(Store):
 
     def effective(self,person,project):
         if person['must_change']:return set()
+        if self.recovery_state()['maintenance']:
+            if person['role']!='admin':return set()
+            with self.db() as c:
+                return {'metadata_view','project_manage'} if c.execute('SELECT 1 FROM remote_projects WHERE id=?',(project,)).fetchone() else set()
         with self.db() as c:
             row=c.execute('SELECT status FROM remote_projects WHERE id=?',(project,)).fetchone()
             perms={r[0] for r in c.execute('SELECT permission FROM grants WHERE user_id=? AND project=?',(person['id'],project))}

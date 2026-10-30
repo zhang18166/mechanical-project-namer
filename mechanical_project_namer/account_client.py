@@ -9,7 +9,7 @@ from .publish_client import Client
 class AccountSession:
     def __init__(self,config):
         if set(config)!={'port','service'} or type(config['port']) is not int or not 1<=config['port']<=65535:raise ProtocolError('connection-config')
-        uid(config['service']);self.config=dict(config);self.token=None;self.user=None
+        uid(config['service']);self.config=dict(config);self.token=None;self.user=None;self.service_state={}
 
     def request(self,method,route,value=None,*,authenticated=True):
         if authenticated:
@@ -32,6 +32,7 @@ class AccountSession:
     def verify_service(self):
         v=self.request('GET','/health',authenticated=False)
         if v.get('service')!=self.config['service'] or v.get('accounts') is not True:raise ProtocolError('service-identity')
+        self.service_state=v
         return v
 
     def login(self,name,password):
@@ -40,7 +41,7 @@ class AccountSession:
         v=self.request('POST','/auth/login',dict(username=name,password=password),authenticated=False)
         if v['service']!=self.config['service']:raise ProtocolError('service-identity')
         self.token=v['token'];self.user=v['user']
-        return dict(user=self.user,expires_at=v['expires_at'])
+        return dict(user=self.user,expires_at=v['expires_at'],service_state=self.service_state)
 
     def me(self):
         v=self.request('GET','/auth/me');self.user=v['user'];return v

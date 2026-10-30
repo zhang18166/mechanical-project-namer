@@ -1,5 +1,7 @@
 # 账号服务第三方依赖
 
+Phase4B补充：在新Ubuntu22.04.5/独立CPython3.12.16上实际验证同一套锁定依赖，包括先前尚未实测的Linux cp312 cffi wheel。解释器、官方镜像来源及校验见[phase4b-runtime.json](phase4b-runtime.json)与[目标环境说明](../../docs/workbench/TARGET_UBUNTU.md)。仅提交元数据，不分发解释器、镜像或新二进制；原运行时及包的许可证在私有安装中保留，以下4A历史不覆盖。
+
 2026-10-30从官方PyPI取得，不捆绑wheel、原生库、虚拟环境或安装包。固定哈希见根目录`requirements-server.lock`；已下载并校验的6个wheel来源文件名、SHA-256及保留的原始许可映射见[wheels.json](wheels.json)。Windows CPython3.12和Linux CPython3.14实际安装通过。额外保留Linux CPython3.10/3.12的cffi官方wheel哈希以供Ubuntu22.04兼容验证，这两种Linux解释器尚未实测。
 
 | 包 | 版本 | 用途 | 许可 / 官方来源 |

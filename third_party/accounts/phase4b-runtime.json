@@ -1,0 +1,33 @@
+{
+  "date": "2026-10-30",
+  "ubuntu": {
+    "version": "22.04.5 LTS",
+    "source": "https://cloud-images.ubuntu.com/wsl/jammy/current/ubuntu-jammy-wsl-amd64-ubuntu22.04lts.rootfs.tar.gz",
+    "sha256": "1483cc5c1dce13064f774834cbffdff226559fd522a67a381a8ea77d63fb4109",
+    "image_date": "2025-03-18",
+    "sha256_verified": true,
+    "independent_gpg_verification": false
+  },
+  "python": {
+    "version": "3.12.16",
+    "build": "20261026",
+    "asset": "cpython-3.12.16+20261026-x86_64-unknown-linux-gnu-install_only.tar.gz",
+    "source": "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/cpython-3.12.16%2B20261026-x86_64-unknown-linux-gnu-install_only.tar.gz",
+    "sha256": "6a79e922e50006b601f29e688407659da1c2b86ebcd4e9c7254cf234be8b89de",
+    "sha256_verified": true,
+    "reproduced_build": false
+  },
+  "actual": {
+    "platform": "Linux x86_64 / WSL2",
+    "glibc": "2.35",
+    "sqlite": "3.53.1",
+    "python_ssl_openssl": "3.5.9",
+    "uid": 1000
+  },
+  "runtime_dependencies": "unchanged requirements-server.lock",
+  "additionally_validated": {
+    "wheel": "cffi-2.0.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+    "sha256": "3e17ed538242334bf70832644a32a7aae3d83b57567f9fd60a26257e992b79ba"
+  },
+  "redistribution": "metadata only; no images, runtimes, wheels or private test data"
+}

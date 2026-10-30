@@ -20,7 +20,8 @@ ROOT=Path(__file__).resolve().parents[1]
 
 @lru_cache(maxsize=1)
 def linux_root():
-    result=subprocess.run(['wsl','-d','Ubuntu','--exec','python3','-c',
+    if os.environ.get('MW_ACCOUNT_TEST_ROOT'):return os.environ['MW_ACCOUNT_TEST_ROOT']
+    result=subprocess.run(['wsl','-d',os.environ.get('MW_ACCOUNT_TEST_DISTRO','Ubuntu'),'--exec','python3','-c',
                            'from pathlib import Path;print(Path.home()/"mechanical-workbench-phase4a")'],
                           capture_output=True,check=True,timeout=15)
     return result.stdout.decode().strip()
@@ -30,6 +31,20 @@ def linux_path(p):
     p=Path(p).absolute()
     if p.drive.upper()!='D:':raise ValueError('Test bridge restricted to the known workspace drive')
     return '/mnt/d/'+p.as_posix()[3:]
+
+
+def wait_ready(process,path,seconds=15):
+    """File creation is not a publication barrier; wait for complete JSON."""
+    end=time.monotonic()+seconds
+    while time.monotonic()<end:
+        if process.poll() is not None:raise RuntimeError('account-service-start-failed')
+        try:value=json.loads(Path(path).read_bytes())
+        except (FileNotFoundError,json.JSONDecodeError):
+            time.sleep(.02);continue
+        if not isinstance(value,dict) or type(value.get('pid')) is not int or type(value.get('port')) is not int or value.get('accounts') is not True:
+            raise RuntimeError('invalid-service-ready')
+        return value
+    raise RuntimeError('account-service-start-timeout')
 
 
 class ManagedService:
@@ -48,7 +63,9 @@ class ManagedService:
 
     def base(self):
         if self.platform=='linux':
-            return ['wsl','-d','Ubuntu','--exec','env','PYTHONPATH='+linux_path(ROOT),linux_root()+'/venv/bin/python']
+            args=['wsl','-d',os.environ.get('MW_ACCOUNT_TEST_DISTRO','Ubuntu')]
+            if os.environ.get('MW_ACCOUNT_TEST_USER'):args+=['-u',os.environ['MW_ACCOUNT_TEST_USER']]
+            return args+['--exec','env','PYTHONPATH='+linux_path(ROOT),os.environ.get('MW_ACCOUNT_TEST_PYTHON',linux_root()+'/venv/bin/python')]
         return [sys.executable]
 
     def command(self,*args,check=True):
@@ -71,11 +88,7 @@ class ManagedService:
         args=self.base()+['-m','mechanical_project_namer.account_server','serve','--config',self.config,'--ready',ready_arg]
         for p in self.deny:args+=['--deny-root',linux_path(p) if self.platform=='linux' else str(p)]
         self.process=subprocess.Popen(args,cwd=ROOT,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-        end=time.monotonic()+15
-        while not self.ready.exists():
-            if self.process.poll() is not None or time.monotonic()>end:raise RuntimeError('account-service-start-failed')
-            time.sleep(.03)
-        v=json.loads(self.ready.read_bytes());self.pid=v['pid'];self.connection=dict(port=v['port'],service=v['service'])
+        v=wait_ready(self.process,self.ready);self.pid=v['pid'];self.connection=dict(port=v['port'],service=v['service'])
         write(self.root/'connection.json',self.connection)
         # WSL localhost forwarding may settle briefly; never use a LAN address.
         end=time.monotonic()+10

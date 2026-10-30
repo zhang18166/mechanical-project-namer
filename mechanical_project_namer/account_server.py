@@ -19,6 +19,7 @@ from .publish_protocol import ProtocolError,data,safe,uid,MAX_JSON
 from .publish_server import Handler,TestControl
 from .accounts import AccountStore,PERMISSIONS,label
 from .library_lock import file_lease
+from contextlib import ExitStack
 
 
 def re_task_create(path):
@@ -27,7 +28,7 @@ def re_task_create(path):
 
 def external(path):
     p=safe(path)
-    if any((a/'.git').exists() for a in p.parents):
+    if any((a/'.git').exists() for a in (p,*p.parents)):
         raise ProtocolError('external-private-path-required')
     return p
 
@@ -108,7 +109,7 @@ class AccountHandler(Handler):
                 raise ProtocolError('request-origin')
             parts=self.path.strip('/').split('/')
             if method=='GET' and parts==['health']:
-                return self.reply(200,dict(status='ok',service=s.config['service'],protocol=1,accounts=True))
+                return self.reply(200,dict(status='ok',service=s.config['service'],protocol=1,accounts=True,**s.recovery_state()))
             if method=='POST' and parts==['auth','login']:
                 v=self.body()
                 if set(v)!={'username','password'}:raise ProtocolError('login-fields')
@@ -126,6 +127,7 @@ class AccountHandler(Handler):
                         s.audit(c,'logout',person['id'],actor=person['id'])
                     return self.reply(200,{'logged_out':True})
                 if method=='POST' and parts==['auth','password']:
+                    if s.recovery_state()['maintenance']:raise PermissionError()
                     v=self.body()
                     if set(v)!={'old_password','new_password'}:raise ProtocolError('password-fields')
                     s.change_password(person,v['old_password'],v['new_password'])
@@ -133,6 +135,7 @@ class AccountHandler(Handler):
                 return self.reply(404,{'error':'not-found'})
             if parts and parts[0]=='admin':
                 person=self.session_user();s.require_admin(person)
+                if method!='GET' and s.recovery_state()['maintenance']:raise PermissionError()
                 if parts==['admin','users']:
                     if method=='GET':
                         with s.db() as c:users=[s.public_user(r) for r in c.execute('SELECT * FROM users ORDER BY created_at,id')]
@@ -152,6 +155,7 @@ class AccountHandler(Handler):
                     if set(v)!={'user','project','permissions'}:raise ProtocolError('permission-fields')
                     s.grant(person,v['user'],v['project'],v['permissions']);return self.reply(200,{'updated':True})
                 if parts==['admin','projects'] and method=='POST':
+                    if s.recovery_state()['maintenance']:raise PermissionError()
                     return self.reply(200,{'project':s.create_project(person,self.body())})
                 if parts==['admin','audit'] and method=='GET':
                     with s.db() as c:rows=[dict(r) for r in c.execute('SELECT * FROM auth_audit ORDER BY id DESC LIMIT 200')]
@@ -161,6 +165,7 @@ class AccountHandler(Handler):
                 who=self.auth();return self.reply(200,{'projects':s.projects(who['account'])})
             if len(parts)==2 and parts[0]=='projects' and method=='PATCH':
                 who=self.auth();project=uid(parts[1])
+                if s.recovery_state()['maintenance']:raise PermissionError()
                 if 'project_manage' not in s.effective(who['account'],project):raise PermissionError()
                 v=self.body()
                 if not v or set(v)-{'name','description','status'}:raise ProtocolError('project-fields')
@@ -187,7 +192,7 @@ def main():
     sub=p.add_subparsers(dest='action',required=True)
     stop=sub.add_parser('stop');stop.add_argument('--ready',type=Path,required=True)
     init=sub.add_parser('init');init.add_argument('--root',type=Path,required=True);init.add_argument('--config',type=Path,required=True)
-    init.add_argument('--index',type=Path);init.add_argument('--storage',type=Path)
+    init.add_argument('--index',type=Path);init.add_argument('--storage',type=Path);init.add_argument('--lease-root',type=Path)
     for name in ('bootstrap','serve','backup-index'):
         cmd=sub.add_parser(name);cmd.add_argument('--config',type=Path,required=True)
         if name=='bootstrap':
@@ -220,7 +225,8 @@ def main():
         root.mkdir(parents=True,mode=0o700)
         config_path.parent.mkdir(parents=True,exist_ok=True)
         config=dict(service=str(uuid.uuid4()),index=str(external(a.index or root/'index/index.sqlite')),
-                    storage=str(external(a.storage or root/'storage')),projects={},session_seconds=1800,login_window=60)
+                    storage=str(external(a.storage or root/'storage')),projects={},session_seconds=1800,login_window=60,
+                    lease_root=str(external(a.lease_root or root.parent/'.server-leases')))
         with config_path.open('xb') as out:out.write(data(config))
         return
     config=json.loads(config_path.read_bytes());index=external(config['index']);external(config['storage'])
@@ -231,7 +237,11 @@ def main():
         def terminate(*args):raise KeyboardInterrupt()
         signal.signal(signal.SIGTERM,terminate)
     index.parent.mkdir(parents=True,exist_ok=True)
-    with file_lease(index.parent/'.publish-server.lock',exclusive=True):
+    lease_root=external(config.get('lease_root',config_path.parent.parent/'.server-leases'))
+    lease_root.mkdir(parents=True,exist_ok=True)
+    with ExitStack() as locks:
+        locks.enter_context(file_lease(lease_root/(uid(config['service'])+'.lock'),exclusive=True))
+        locks.enter_context(file_lease(index.parent/'.publish-server.lock',exclusive=True))
         store=AccountStore(config)
         if a.action=='bootstrap':
             key=store.bootstrap(a.username,read_password(a.password_file));print(data({'admin_uuid':key}).decode());return
@@ -257,7 +267,7 @@ def main():
         server=HTTPServer(('127.0.0.1',a.port),AccountHandler);server.store=store;server.control=TestControl();server.fault=''
         server.handle_error=lambda *args:None
         ready=external(a.ready)
-        with ready.open('xb') as out:out.write(data(dict(port=server.server_port,service=config['service'],pid=os.getpid(),accounts=True)))
+        with ready.open('xb') as out:out.write(data(dict(port=server.server_port,service=config['service'],pid=os.getpid(),accounts=True,**store.recovery_state())))
         try:server.serve_forever()
         except KeyboardInterrupt:pass
         finally:server.server_close()

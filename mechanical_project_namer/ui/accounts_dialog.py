@@ -135,6 +135,8 @@ class AccountsDialog(QDialog):
         user=self.session.user if self.session else None
         if user:
             self.account_label.setText('当前账号 '+user['username']+' / '+user['id']+' / '+user['role']+('；必须修改初始密码' if user['must_change'] else '；权限以服务器当前结果为准'))
+            if self.session.service_state.get('maintenance'):
+                self.account_label.setText(self.account_label.text()+'；恢复维护中：普通账号关闭，须离线管理员核验放行。')
         else:self.account_label.setText('未登录；命名、本地文件、归档与离线预览仍可使用。')
         self.admin.setVisible(bool(user and user['role']=='admin' and not user['must_change']))
         self.connection.setEnabled(not self.worker and not user)
@@ -142,6 +144,11 @@ class AccountsDialog(QDialog):
         self.change_button.setEnabled(not self.worker and bool(user))
         ready=not self.worker and bool(user and not user['must_change'])
         for widget in (self.publish_button,self.download_button,self.refresh_button,self.projects,self.versions):widget.setEnabled(ready)
+        maintenance=bool(self.session and self.session.service_state.get('maintenance'))
+        if maintenance:
+            for widget in (self.publish_button,self.download_button,self.change_button):widget.setEnabled(False)
+        for widget in (self.create_button,self.disable_button,self.reset_button,self.grant_button,self.project_button):
+            widget.setEnabled(bool(ready and not maintenance))
 
     def login(self):
         try:

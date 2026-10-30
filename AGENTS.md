@@ -1,5 +1,7 @@
 # 项目长期约束
 
+- 服务端配套备份/恢复：`python -m mechanical_project_namer.server_recovery`，见[PHASE4B](docs/workbench/PHASE4B.md)、[维护说明](docs/workbench/SERVER_RECOVERY.md)。服务schema3防旧加载器忽略恢复门禁；停服、独占租约、新目录恢复、旧会话全撤销，完整人工安全审核后才能放行；不得用桌面3B备份替代服务端目录集。
+
 - 账号与远端目录仅在隔离开发模式验证：`scripts/dev_accounts.ps1`，服务为`python -m mechanical_project_namer.account_server`，服务器依赖锁见`requirements-server.lock`，验收/启动/权限/备份边界见[PHASE4A](docs/workbench/PHASE4A.md)。不开放注册或公网，令牌只在客户端内存，账号配置及服务数据必须仓库外；桌面与服务索引不能混用。
 
 - 发布协议仍为本机实验：`scripts/start_publish_server.ps1`、`scripts/stop_publish_server.ps1`、`scripts/dev_publish.ps1`，见[PHASE3C](docs/workbench/PHASE3C.md)。只绑定127.0.0.1，身份配置/服务数据在仓库外；不得把实验服务用于公网或生产。

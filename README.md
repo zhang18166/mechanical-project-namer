@@ -63,6 +63,8 @@ py -3.12 -m venv .venv
 
 ## 使用
 
+Phase4B增加Ubuntu22.04目标组合与服务端配套备份/新位置恢复CLI，桌面Schema13不变、服务索引升级schema3；见[验收记录](docs/workbench/PHASE4B.md)及[维护命令](docs/workbench/SERVER_RECOVERY.md)。恢复先关闭普通访问，只能在本地管理员核对全部账号/项目与恢复点后安全变更后放行。当前不提供公网或腾讯云部署入口。
+
 Phase4A隔离账号/远端项目入口为`scripts/dev_accounts.ps1`，在项目文件页按需登录本机测试服务；本地功能不依赖登录。普通用户Linux服务、管理员CLI、依赖安装、权限和验证范围见[PHASE4A](docs/workbench/PHASE4A.md)。只监听回环，未部署腾讯云或飞牛，不是公网服务使用说明。
 
 简化首页使用设备和自定义模块，例如虚构项目 `DEMO`、模块 `DJ`；名称示例 `DEMO-DJ-001-演示连接块`。预览后可仅登记名称，或通过另行验证的 SOLIDWORKS 联动创建文件。

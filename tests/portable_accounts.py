@@ -7,7 +7,7 @@ import tempfile
 import unittest
 import uuid
 from pathlib import Path
-from mechanical_project_namer.accounts import AccountStore,HASHER
+from mechanical_project_namer.accounts import AccountStore,HASHER,ACCOUNT_SCHEMA
 
 
 class Accounts(unittest.TestCase):
@@ -129,7 +129,7 @@ class Accounts(unittest.TestCase):
         with self.assertRaises(OSError):AccountStore(cfg,checkpoint=fail)
         with legacy.db() as c:self.assertFalse(c.execute("SELECT name FROM sqlite_master WHERE name='users'").fetchone())
         again=AccountStore(cfg)
-        with again.db() as c:self.assertEqual(c.execute("SELECT value FROM account_meta WHERE key='schema'").fetchone()[0],'2')
+        with again.db() as c:self.assertEqual(c.execute("SELECT value FROM account_meta WHERE key='schema'").fetchone()[0],ACCOUNT_SCHEMA)
 
     def test_future_account_schema_refused(self):
         with self.store.db() as c:c.execute("UPDATE account_meta SET value='999' WHERE key='schema'")
