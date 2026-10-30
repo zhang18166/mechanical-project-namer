@@ -2,6 +2,8 @@
 
 2026-10-30。**目标环境验收PASS（下述明确Ubuntu22.04组合）／服务端配套备份恢复PASS（隔离文件级范围）**。公开基准`5561b8c8354cd371cf4d3ad28c5408bea6922d3e`；独立分支`codex/mechanical-workbench-phase4b-server-recovery`、工作树`<开发根>/_worktrees/mechanical-workbench-phase4b-server-recovery`。原工作树、用户修改和私有历史保留。应用1.7.1、桌面Schema13不变；服务索引schema2→3，原因是旧加载器必须拒绝忽略恢复门禁。**Phase2D仍PARTIAL，STEP普通模式关闭。** GitHub同步另行核对，不代表HTTPS或生产部署放行。
 
+实现/验收提交`5c9a4d848cf6a3e27fd53782dc57d462af2f80f5`已安全推送独立4B分支，实际读回SHA一致；27份文本和全部新增提交审查通过，原11个远端分支未变。此同步说明另作文档提交，最终SHA以分支历史及交付报告核对为准，不包含运行数据。
+
 环境、官方来源/哈希、创建过程与运行命令见[TARGET_UBUNTU](TARGET_UBUNTU.md)；备份格式、状态机和本地审核见[SERVER_RECOVERY](SERVER_RECOVERY.md)。当前不是腾讯云部署，也不是HTTPS放行。
 
 ## 已实际完成
