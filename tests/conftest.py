@@ -18,6 +18,7 @@ def isolated_profile(tmp_path_factory):
         patch.setenv(key, str(folder))
     patch.delenv("MECHANICAL_PROJECT_NAMER_DEV_ROOT", raising=False)
     patch.setenv("QT_QPA_PLATFORM", "offscreen")
+    patch.setenv("MW_ALLOW_ISOLATED_HTTP", "1")  # Legacy fixtures, never a TLS fallback.
     patch.setattr(tempfile, "tempdir", None)
     yield profile
     patch.undo()

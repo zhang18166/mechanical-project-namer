@@ -4,25 +4,29 @@ import http.client
 import json
 from .publish_protocol import data,uid,ProtocolError,MAX_JSON
 from .publish_client import Client
+from .transport import Target,response_bytes
 
 
 class AccountSession:
     def __init__(self,config):
-        if set(config)!={'port','service'} or type(config['port']) is not int or not 1<=config['port']<=65535:raise ProtocolError('connection-config')
-        uid(config['service']);self.config=dict(config);self.token=None;self.user=None;self.service_state={}
+        self.target=Target(config)
+        self.config=dict(config);self.token=None;self.user=None;self.service_state={}
 
     def request(self,method,route,value=None,*,authenticated=True):
+        if self.config!=self.target.config:
+            self.token=None;self.user=None;self.service_state={}
+            raise ProtocolError('target-changed-login-required')
         if authenticated:
             if not self.token:raise ProtocolError('login-required')
             self.verify_service()
-        c=http.client.HTTPConnection('127.0.0.1',self.config['port'],timeout=10)
+        c=self.target.connection()
         try:
             headers={}
             if authenticated:
                 if not self.token:raise ProtocolError('login-required')
                 headers['Authorization']='Bearer '+self.token
             c.request(method,route,body=data(value) if value is not None else None,headers=headers)
-            r=c.getresponse();b=r.read(MAX_JSON+1)
+            r=c.getresponse();b=response_bytes(c,r)
             if len(b)>MAX_JSON:raise ProtocolError('response-limit')
             if r.status!=200:
                 raise ProtocolError('account-request-rejected-'+str(r.status))
@@ -59,6 +63,7 @@ class AccountSession:
 
     def publisher(self,project):
         if not self.token:raise ProtocolError('login-required')
-        return Client(dict(self.config,project=uid(project),token=self.token))
+        extra=dict(account=self.user['id']) if self.target.identity and self.user else {}
+        return Client(dict(self.config,project=uid(project),token=self.token,**extra))
 
     def versions(self,project):return self.publisher(project).versions()

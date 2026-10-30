@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 """Development-only account/index dialog; sessions live in memory, operations in worker."""
 import json
+from datetime import datetime
 from pathlib import Path
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import (QDialog,QVBoxLayout,QHBoxLayout,QLabel,QLineEdit,QPushButton,
@@ -17,10 +18,11 @@ class AccountsDialog(QDialog):
     def __init__(self,repository,parent=None,*,snapshots=None):
         super().__init__(parent);self.repository=repository;self.snapshots=snapshots
         self.session=None;self.worker=None;self.closing=False;self.project_rows=[];self.version_rows=[]
+        self.last_confirmed_at=None;self.current_confirmed=False
         self.setWindowTitle('隔离测试账号与远端项目');self.resize(1050,850)
         layout=QVBoxLayout(self)
         note=QLabel('仅本机回环隔离测试；不是腾讯云部署。不保存密码/会话令牌；本地命名与离线文件不依赖登录。');note.setWordWrap(True);layout.addWidget(note)
-        row=QHBoxLayout();self.connection=QLineEdit();self.connection.setPlaceholderText('公开测试连接配置JSON（只有port/service）')
+        row=QHBoxLayout();self.connection=QLineEdit();self.connection.setPlaceholderText('HTTPS测试配置JSON（url/service/ca；不含密码或令牌）')
         choose=QPushButton('连接配置');choose.clicked.connect(self.choose);row.addWidget(self.connection);row.addWidget(choose);layout.addLayout(row)
         row=QHBoxLayout();self.username=QLineEdit();self.username.setPlaceholderText('虚构用户名')
         self.password=QLineEdit();self.password.setEchoMode(QLineEdit.EchoMode.Password);self.password.setPlaceholderText('密码')
@@ -32,6 +34,7 @@ class AccountsDialog(QDialog):
             b.clicked.connect(fn);row.addWidget(b)
         layout.addLayout(row)
         self.account_label=QLabel('未登录；本地功能仍可使用。');self.account_label.setWordWrap(True);layout.addWidget(self.account_label)
+        self.confirmation_label=QLabel('尚未确认测试目标。');self.confirmation_label.setWordWrap(True);layout.addWidget(self.confirmation_label)
         row=QHBoxLayout();self.projects=QListWidget();self.projects.setMaximumHeight(130);self.versions=QListWidget();self.versions.setMaximumHeight(130)
         row.addWidget(self.projects);row.addWidget(self.versions);layout.addLayout(row)
         self.projects.currentRowChanged.connect(self.load_versions)
@@ -80,7 +83,7 @@ class AccountsDialog(QDialog):
 
     def choose(self):
         if self.worker or (self.session and self.session.user):return
-        p,_=QFileDialog.getOpenFileName(self,'选择仅含端口和服务UUID的测试配置','','JSON (*.json)')
+        p,_=QFileDialog.getOpenFileName(self,'选择HTTPS地址、服务UUID和CA引用的测试配置','','JSON (*.json)')
         if p:self.connection.setText(p)
 
     def require_session(self):
@@ -94,12 +97,14 @@ class AccountsDialog(QDialog):
 
     def start(self,operation):
         if self.worker or self.closing:return
+        self.current_confirmed=False;self.update_confirmation()
         for w in self.controls:w.setEnabled(False)
         self.details.clear();self.status.setText('后台执行中…')
         self.worker=SnapshotWorker(lambda cancel,progress:operation(cancel,progress),self)
         self.worker.completed.connect(self.done);self.worker.failed.connect(self.failed);self.worker.progress.connect(self.status.setText);self.worker.finished.connect(self.finished);self.worker.start()
 
     def done(self,value):
+        self.last_confirmed_at=datetime.now().astimezone().isoformat(timespec='seconds');self.current_confirmed=True
         kind=value.get('kind') if isinstance(value,dict) else None
         if kind=='projects':
             self.project_rows=value['projects'];self.projects.blockSignals(True);self.projects.clear()
@@ -107,7 +112,7 @@ class AccountsDialog(QDialog):
             self.projects.blockSignals(False);self.versions.clear();self.version_rows=[]
         elif kind=='versions':
             self.version_rows=value['versions'];self.versions.clear()
-            for v in self.version_rows:self.versions.addItem(v['manifest']['label']+(' | 字节健康' if v['healthy'] else ' | 不可用')+' | CAD依赖/预览对应未验证')
+            for v in self.version_rows:self.versions.addItem(v['manifest']['label']+(' | 上次查询：字节健康' if v['healthy'] else ' | 上次查询：不可用')+' | CAD依赖/预览对应未验证')
         elif kind=='user-created':self.target_user.setText(value['id'])
         if kind!='login' or not (self.session and self.session.user and self.session.user['must_change']):self.password.clear()
         if kind in ('password','user-created','reset'):self.initial_password.clear();self.new_password.clear()
@@ -115,6 +120,7 @@ class AccountsDialog(QDialog):
         self.status.setText('操作完成；仅隔离测试服务结果。');self.update_identity()
 
     def failed(self,message):
+        self.current_confirmed=False
         # Worker errors may contain local exceptions: never echo them to product UI.
         import re
         code=message.split('：',1)[-1]
@@ -132,6 +138,7 @@ class AccountsDialog(QDialog):
         if self.closing:QTimer.singleShot(0,self.close)
 
     def update_identity(self):
+        self.update_confirmation()
         user=self.session.user if self.session else None
         if user:
             self.account_label.setText('当前账号 '+user['username']+' / '+user['id']+' / '+user['role']+('；必须修改初始密码' if user['must_change'] else '；权限以服务器当前结果为准'))
@@ -150,6 +157,14 @@ class AccountsDialog(QDialog):
         for widget in (self.create_button,self.disable_button,self.reset_button,self.grant_button,self.project_button):
             widget.setEnabled(bool(ready and not maintenance))
 
+    def update_confirmation(self):
+        if not self.session:
+            self.confirmation_label.setText('尚未确认测试目标。');return
+        config=self.session.config
+        target=config.get('url',f'隔离HTTP 127.0.0.1:{config.get("port", "")}')
+        state='本次操作已确认（不代表持续在线）' if self.current_confirmed else '当前未确认；历史结果不代表刚刚核验健康'
+        self.confirmation_label.setText('目标：'+target+' / '+config['service']+'；'+state+'；上次确认：'+(self.last_confirmed_at or '无'))
+
     def login(self):
         try:
             path=safe(self.connection.text())
@@ -157,6 +172,8 @@ class AccountsDialog(QDialog):
             session=AccountSession(json.loads(path.read_bytes()))
             name,secret=self.username.text(),self.password.text()
         except Exception:self.status.setText('连接配置无效；只允许仓库外测试配置。');return
+        # A new target/account must not inherit a prior target's confirmation.
+        self.session=None;self.last_confirmed_at=None;self.current_confirmed=False;self.update_confirmation()
         def op(cancel,progress):
             result=session.login(name,secret);self.session=session
             return dict(kind='login',**result)

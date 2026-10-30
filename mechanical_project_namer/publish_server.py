@@ -259,7 +259,12 @@ class TestControl:
                 raise Disconnect()
 
 
-class Handler(BaseHTTPRequestHandler):
+class PublishService:
+    """Shared synchronous business operations; transports supply streams/reply hooks.
+
+    This class neither parses HTTP nor opens/listens on a network socket. Both
+    the historical HTTP adapter and ASGI adapter call these same operations.
+    """
     protocol_version = 'HTTP/1.0'
 
     def setup(self):
@@ -381,7 +386,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def dispatch(self, method):
         try:
-            if self.headers.get('Origin') or self.headers.get('Host') != f'127.0.0.1:{self.server.server_port}' or '?' in self.path:
+            if self.headers.get('Origin') or self.headers.get('Host') != getattr(self.server, 'expected_host', f'127.0.0.1:{self.server.server_port}') or '?' in self.path:
                 raise ProtocolError('request-origin')
             who = self.auth()
             s, control = self.server.store, self.server.control
@@ -521,6 +526,10 @@ class Handler(BaseHTTPRequestHandler):
                 self.reply(400, {'error': 'invalid-request'})
             except OSError:
                 pass
+
+
+class Handler(PublishService, BaseHTTPRequestHandler):
+    """Historical isolated HTTPServer transport, not used by ASGI."""
 
 
 def main():

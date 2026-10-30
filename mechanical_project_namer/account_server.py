@@ -16,7 +16,7 @@ from http.server import HTTPServer
 from pathlib import Path
 
 from .publish_protocol import ProtocolError,data,safe,uid,MAX_JSON
-from .publish_server import Handler,TestControl
+from .publish_server import Handler,PublishService,TestControl
 from .accounts import AccountStore,PERMISSIONS,label
 from .library_lock import file_lease
 from contextlib import ExitStack
@@ -44,7 +44,8 @@ def read_password(path):
     return b.decode('utf-8').rstrip('\r\n')
 
 
-class AccountHandler(Handler):
+class AccountService(PublishService):
+    """Account routes shared by the independent HTTP and ASGI transports."""
     def reply(self,status,obj):
         if status==403 and not getattr(self,'audit_denied',False):
             self.audit_denied=True
@@ -105,7 +106,7 @@ class AccountHandler(Handler):
     def dispatch(self,method):
         s=self.server.store;s.actor=None;self.audit_denied=False
         try:
-            if self.headers.get('Origin') or self.headers.get('Host')!=f'127.0.0.1:{self.server.server_port}' or '?' in self.path:
+            if self.headers.get('Origin') or self.headers.get('Host')!=getattr(self.server,'expected_host',f'127.0.0.1:{self.server.server_port}') or '?' in self.path:
                 raise ProtocolError('request-origin')
             parts=self.path.strip('/').split('/')
             if method=='GET' and parts==['health']:
@@ -185,6 +186,10 @@ class AccountHandler(Handler):
         except Exception:
             try:return self.reply(503,{'error':'temporary-service-failure'})
             except OSError:return
+
+
+class AccountHandler(AccountService, Handler):
+    """Explicit historical loopback HTTP transport."""
 
 
 def main():

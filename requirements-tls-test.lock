@@ -1,0 +1,5 @@
+# Certificate fixture generation only. Official PyPI cp311-abi3 wheels.
+-r requirements-server.lock
+cryptography==50.0.2 \
+    --hash=sha256:7afa5a6602a9f29af1f3a2965f831bae7c9d5d597b7cbb716d41ab3b7d89879c \
+    --hash=sha256:9dab55f57c74c3cad24c323bacbbd04be4705ba6eb0d92e920b1fc4837ed5079

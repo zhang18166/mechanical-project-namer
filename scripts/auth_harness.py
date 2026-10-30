@@ -133,7 +133,7 @@ class ManagedService:
 
 
 class AuthFixture:
-    def __init__(self,root,platform='windows',large=False):
+    def __init__(self,root,platform='windows',large=False,*,service_class=None):
         self.root=Path(root).absolute()
         if self.root.exists() or self.root.is_relative_to(ROOT):raise ValueError('New external fixture required')
         self.root.mkdir(parents=True)
@@ -145,7 +145,7 @@ class AuthFixture:
         self.a.sources.append(f);work=self.a.sources[0].parent
         choices=[dict(file_id=r['file_id']) for r in catalog.list_files(self.a.project.id)]
         self.task=self.a.snap.prepare(self.a.project.id,work,choices,'AuthV1');self.a.snap.run(self.task);self.a.before=self.a.protected()
-        self.service=ManagedService(self.root/'backend',platform,deny=[self.a.root/'client',self.b.root/'client'])
+        self.service=(service_class or ManagedService)(self.root/'backend',platform,deny=[self.a.root/'client',self.b.root/'client'])
         self.service.start();self.admin=AccountSession(self.service.connection)
         initial=self.admin.login('fake-admin',self.service.initial)
         assert initial['user']['must_change']

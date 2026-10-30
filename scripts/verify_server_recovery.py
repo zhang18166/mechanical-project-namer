@@ -88,7 +88,7 @@ r=pathlib.Path(sys.argv[1]);print(json.dumps({p.relative_to(r).as_posix():[hashl
         local=f.a.snap._get(f.task);payload=f.a.snap.store/'versions'/local['version_id']/'payload'
         client.request('PUT',f'/tasks/{task}/files/0',file=payload/manifest['files'][0]['path'])
         route=f'/tasks/{task}/files/1';amount=262144;entry=manifest['files'][1]
-        connection=http.client.HTTPConnection('127.0.0.1',s.connection['port'],timeout=10)
+        connection=writer.target.connection()
         connection.putrequest('PUT',route);connection.putheader('Authorization','Bearer '+writer.token);connection.putheader('Content-Length',str(entry['size']));connection.endheaders()
         with (payload/entry['path']).open('rb') as stream:connection.send(stream.read(amount))
         # Observe the server's actual partial file BEFORE severing the transport;
@@ -98,7 +98,7 @@ r=pathlib.Path(sys.argv[1]);print(json.dumps({p.relative_to(r).as_posix():[hashl
         connection.sock.shutdown(__import__('socket').SHUT_WR)
         try:
             response=connection.getresponse();response.read();assert response.status!=200
-        except http.client.RemoteDisconnected:
+        except (http.client.RemoteDisconnected,OSError):
             pass  # WSL forwarding may close a half-closed connection without an HTTP error body.
         finally:connection.close()
         pending=client.request('GET','/tasks/'+task);assert pending['verified']==[0] and 0<amount<entry['size']
@@ -136,6 +136,7 @@ r=pathlib.Path(sys.argv[1]);print(json.dumps({p.relative_to(r).as_posix():[hashl
         restored=ManagedService.__new__(ManagedService);restored.root=f.root/'replacement';restored.root.mkdir();restored.platform='linux';restored.process=None
         restored.data_root=target;restored.config=target+'/server.json';restored.deny=[Path(str(f.a.root/'client')),Path(str(f.b.root/'client'))]
         restored.initial='';restored.current=s.current
+        if hasattr(s,'port'):restored.port=s.port
         restored.start()
         for old in old_tokens:
             stale=AccountSession(restored.connection);stale.token=old;rejected(lambda:stale.me())

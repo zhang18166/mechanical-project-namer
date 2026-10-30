@@ -10,6 +10,7 @@ import uuid
 from pathlib import Path
 
 from .publish_protocol import *
+from .transport import Target,response_bytes
 
 
 def error_code(exc):
@@ -22,14 +23,19 @@ def error_code(exc):
 
 class Client:
     def __init__(self, config, *, config_ref=''):
-        self.config = config
+        self.config = dict(config)
         self.config_ref = config_ref
-        if set(config) != {'port','service','project','token'} or type(config['port']) is not int or not 1<=config['port']<=65535:
-            raise ProtocolError('client-config')
+        connection={k:v for k,v in config.items() if k not in ('project','token','account')}
+        self.target=Target(connection)
+        if self.target.identity:
+            uid(config.get('account'))
+            self.config['target_identity']=self.target.identity+':'+config['account']
         uid(config['service']); uid(config['project'])
+        self.bound_config=dict(self.config)
 
     def request(self, method, route, value=None, file=None, cancel=None):
-        c = http.client.HTTPConnection('127.0.0.1',self.config['port'],timeout=10)
+        if self.config!=self.bound_config:raise ProtocolError('target-changed-login-required')
+        c = self.target.connection()
         try:
             headers = {'Authorization':'Bearer '+self.config['token']}
             if file is not None:
@@ -48,7 +54,7 @@ class Client:
                         c.send(b)
             else:
                 c.request(method,route,body=data(value) if value is not None else None,headers=headers)
-            r=c.getresponse(); body=r.read(MAX_JSON+1)
+            r=c.getresponse(); body=response_bytes(c,r)
             if len(body)>MAX_JSON:
                 raise ProtocolError('response-limit')
             if r.status!=200:
@@ -164,7 +170,7 @@ class Client:
             out=safe(payload/f['path']); out.parent.mkdir(parents=True,exist_ok=True)
             if out.exists() and digest(out)=={k:f[k] for k in ('size','sha256')}:
                 continue
-            c=http.client.HTTPConnection('127.0.0.1',self.config['port'],timeout=10)
+            c=self.target.connection()
             try:
                 c.request('GET',f'/tasks/{task}/files/{i}',headers={'Authorization':'Bearer '+self.config['token']})
                 r=c.getresponse()
@@ -174,7 +180,10 @@ class Client:
                 deadline=time.monotonic()+30
                 with out.open('wb') as stream:
                     while True:
-                        if time.monotonic()>deadline:raise ProtocolError('download-timeout')
+                        left=deadline-time.monotonic()
+                        if left<=0:raise ProtocolError('download-timeout')
+                        sock=c.sock or getattr(c,'_workbench_socket',None)
+                        if sock:sock.settimeout(min(10,left))
                         b=r.read1(65536)
                         if not b:break
                         if cancel and cancel.is_set():

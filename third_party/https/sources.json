@@ -1,0 +1,32 @@
+{
+  "review_date": "2026-10-30",
+  "nginx": {
+    "version": "1.30.6-1~jammy",
+    "url": "https://nginx.org/packages/ubuntu/pool/nginx/n/nginx/nginx_1.30.6-1~jammy_amd64.deb",
+    "sha256": "ddafa6d5decef787c7942e6c4a9c62cf881d7ea598ec42b9997ecbf298e1bde3",
+    "license": "BSD-2-Clause",
+    "signing_key_fingerprint": "8540A6F18833A80E9C1653A42FD21310B49F6B46",
+    "signed_packages_sha256": "54126ae885067e3c05b746eb0f91dc3241ba01101db6f7fe98f38956d8425c68",
+    "repository": "https://nginx.org/packages/ubuntu/dists/jammy/Release",
+    "advisories": "https://nginx.org/en/security_advisories.html",
+    "local_archive_name": "nginx.deb",
+    "extract_directory": "nginx"
+  },
+  "openssl": {
+    "version": "3.0.2-0ubuntu1.30",
+    "url": "https://security.ubuntu.com/ubuntu/pool/main/o/openssl/libssl3_3.0.2-0ubuntu1.30_amd64.deb",
+    "sha256": "d1b4636e32ac6d3b95d583ac05ac548b1aa248414bae1c51b14f54be0f8fd7bc",
+    "license": "Apache-2.0",
+    "signing_key_fingerprint": "F6ECB3762474EDA9D21B7022871920D1991BC93C",
+    "signed_packages_gz_sha256": "e48fbec08fc707bdae9a5b30301ee88e3484b69065549733085b4b7493e5d67d",
+    "repository": "https://security.ubuntu.com/ubuntu/dists/jammy-security/InRelease",
+    "local_archive_name": "libssl3.deb",
+    "extract_directory": "openssl"
+  },
+  "python_packages": [
+    {"name": "uvicorn", "version": "0.54.0", "license": "BSD-3-Clause", "source": "https://github.com/Kludex/uvicorn", "lock": "requirements-https.lock"},
+    {"name": "h11", "version": "0.16.0", "license": "MIT", "source": "https://github.com/python-hyper/h11", "lock": "requirements-https.lock"},
+    {"name": "click", "version": "8.5.0", "license": "BSD-3-Clause", "source": "https://github.com/pallets/click", "lock": "requirements-https.lock"},
+    {"name": "cryptography", "version": "50.0.2", "license": "Apache-2.0 OR BSD-3-Clause", "source": "https://github.com/pyca/cryptography", "lock": "requirements-tls-test.lock", "scope": "test certificate generation only"}
+  ]
+}

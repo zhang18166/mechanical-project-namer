@@ -14,6 +14,7 @@ import uuid
 from scripts.publish_harness import Fixture,begin,upload_all,remote_manifest,write,ROOT
 from mechanical_project_namer.publish_protocol import data,ProtocolError,digest
 from mechanical_project_namer.publish_ledger import PublishLedger
+from mechanical_project_namer.publish_client import Client
 
 
 def auth_case(f,role,operation):
@@ -21,7 +22,8 @@ def auth_case(f,role,operation):
     ca,ta,ma=begin(s,f,f.v1)
     # upload_all uses payload V2, identical bytes by construction.
     upload_all(ca,ta,ma,f);ca.request('POST',f'/tasks/{ta}/commit',{})
-    cfg=json.loads(s.config.read_bytes());b=s.client('outsider');b.config['project']=s.other
+    cfg=json.loads(s.config.read_bytes());original=s.client('outsider')
+    b=Client(dict(original.config,project=s.other))  # Explicit new project/target binding.
     mb=remote_manifest(f,f.v1);mb['local_project']=2;tb=str(uuid.uuid4())
     b.request('POST',f'/projects/{s.other}/tasks',dict(task=tb,manifest=mb));upload_all(b,tb,mb,f);b.request('POST',f'/tasks/{tb}/commit',{})
     tid=ta;m=ma

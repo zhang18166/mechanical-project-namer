@@ -35,7 +35,7 @@ def full(f):
         file_route=f'/tasks/{state["task"]}/files/{index}'
         if entry['path'].lower().endswith(('.glb','.pdf')):
             # Raw client method is JSON-only; use real HTTP to check authorized bytes.
-            conn=http.client.HTTPConnection('127.0.0.1',s.connection['port'],timeout=10)
+            conn=reader.target.connection()
             try:
                 conn.request('GET',file_route,headers={'Authorization':'Bearer '+reader.token})
                 response=conn.getresponse();b=response.read()
@@ -70,7 +70,7 @@ def full(f):
     # Fixed generic login errors and persistent failure throttling.
     bodies=[]
     for name in ('fake-admin','no-such-account'):
-        conn=http.client.HTTPConnection('127.0.0.1',s.connection['port'],timeout=10)
+        conn=admin.target.connection()
         try:
             conn.request('POST','/auth/login',body=data(dict(username=name,password='NOT A REAL PASSWORD')))
             r=conn.getresponse();bodies.append((r.status,r.read()))
@@ -135,7 +135,7 @@ def auth_case(f,role,operation):
     allowed=role=='admin' or role=='fake-writer' and operation in ('publish','cancel','source') or role=='fake-download' and operation=='source' or role=='fake-outsider' and operation=='foreign-project'
     if operation=='foreign-task':allowed=False
     if allowed and operation=='source':
-        con=http.client.HTTPConnection('127.0.0.1',f.service.connection['port'],timeout=10)
+        con=session.target.connection()
         try:
             con.request(method,path,headers={'Authorization':'Bearer '+session.token});r=con.getresponse();body=r.read();assert r.status==200
         finally:con.close()

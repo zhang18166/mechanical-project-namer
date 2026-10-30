@@ -1,5 +1,7 @@
 # 项目长期约束
 
+- HTTPS隔离入口：`mechanical_project_namer.asgi_server`、`scripts/https_runtime.py`，见[PHASE4C](docs/workbench/PHASE4C.md)、[运行/证书/并发边界](docs/workbench/HTTPS_ISOLATION.md)。只用私有UDS、单worker及显式有界业务执行、目标专属CA；旧HTTP必须显式隔离，不能TLS失败回退。Nginx空闲超时不冒充绝对总寿命，不自动公网部署。
+
 - 服务端配套备份/恢复：`python -m mechanical_project_namer.server_recovery`，见[PHASE4B](docs/workbench/PHASE4B.md)、[维护说明](docs/workbench/SERVER_RECOVERY.md)。服务schema3防旧加载器忽略恢复门禁；停服、独占租约、新目录恢复、旧会话全撤销，完整人工安全审核后才能放行；不得用桌面3B备份替代服务端目录集。
 
 - 账号与远端目录仅在隔离开发模式验证：`scripts/dev_accounts.ps1`，服务为`python -m mechanical_project_namer.account_server`，服务器依赖锁见`requirements-server.lock`，验收/启动/权限/备份边界见[PHASE4A](docs/workbench/PHASE4A.md)。不开放注册或公网，令牌只在客户端内存，账号配置及服务数据必须仓库外；桌面与服务索引不能混用。

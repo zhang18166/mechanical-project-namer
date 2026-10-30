@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+os.environ.setdefault('MW_ALLOW_ISOLATED_HTTP','1')  # Explicit historical test-only route.
 import subprocess
 import sys
 import time
@@ -19,6 +20,20 @@ def write(path,value):
     # Replace control/config atomically so a running test never reads half JSON.
     temp=path.with_suffix('.new')
     temp.write_bytes(data(value));os.replace(temp,path)
+
+
+def wait_publish_ready(process,path,seconds=12):
+    """Existence precedes the child's JSON write; wait within the same budget."""
+    deadline=time.monotonic()+seconds
+    while time.monotonic()<deadline:
+        if process.poll() is not None:raise RuntimeError('service-start')
+        try:ready=json.loads(Path(path).read_bytes())
+        except (FileNotFoundError,json.JSONDecodeError):
+            time.sleep(.02);continue
+        if not isinstance(ready,dict) or type(ready.get('pid')) is not int or type(ready.get('port')) is not int or not isinstance(ready.get('service'),str):
+            raise RuntimeError('invalid-service-ready')
+        return ready
+    raise RuntimeError('service-start-timeout')
 
 
 class Fixture:
@@ -107,11 +122,7 @@ class Service:
     def start(self,port=0):
         self.ready=self.root/('ready-'+uuid.uuid4().hex+'.json')
         self.process=subprocess.Popen([sys.executable,'-m','mechanical_project_namer.publish_server','--config',str(self.config),'--ready',str(self.ready),'--port',str(port),'--test-control',str(self.control),'--deny-root',str(self.deny)],cwd=ROOT,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-        end=time.monotonic()+12
-        while not self.ready.exists():
-            if self.process.poll() is not None or time.monotonic()>end:raise RuntimeError('service-start')
-            time.sleep(.02)
-        ready=json.loads(self.ready.read_bytes());self.pid=ready['pid'];self.port=ready['port']
+        ready=wait_publish_ready(self.process,self.ready);self.pid=ready['pid'];self.port=ready['port']
         for name in ['publisher','reader','outsider','downloader']:
             path=self.root/(name+'.json');cfg=json.loads(path.read_bytes());cfg['port']=self.port;write(path,cfg)
         return self.client()

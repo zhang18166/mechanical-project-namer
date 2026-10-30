@@ -33,7 +33,8 @@ class PublishLedger:
         finally:
             c.close()
     def key(self, config, store, version):
-        return sha([config['service'], config['project'], store, version])
+        old=[config['service'], config['project'], store, version]
+        return sha([config['target_identity'],*old] if config.get('target_identity') else old)
     def get(self, key):
         with self.db() as c:
             row = c.execute('SELECT * FROM publishes WHERE target=? AND instance=?', (key,self.instance)).fetchone()
@@ -48,7 +49,7 @@ class PublishLedger:
         if old and not (restart and old['state']=='cancelled'):
             self.update(key,'retrying',code='retry')
             return key, old['task']
-        task = str(uuid.uuid4()) if old else str(uuid.uuid5(uuid.UUID(config['service']),config['project']+m['store']+m['version']))
+        task = str(uuid.uuid4()) if old else str(uuid.uuid5(uuid.UUID(config['service']),config.get('target_identity','')+config['project']+m['store']+m['version']))
         with self.db() as c:
             c.execute('INSERT OR REPLACE INTO publishes VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
                       (key,self.instance,config['service'],config['project'],m['store'],m['version'],task,sha(m),'waiting','',0,'',config_ref))
