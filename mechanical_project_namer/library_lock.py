@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 """Cooperative cross-process library leases, also enforced below the UI/Repository."""
 from contextlib import contextmanager
-from functools import wraps
+from functools import wraps, lru_cache
 from pathlib import Path
 import os
 import stat
@@ -56,24 +56,32 @@ def file_lease(path, *, exclusive=False):
                 entry['stream'].close()
 
 
+@lru_cache(maxsize=1)
+def _windows_lock_api():
+    # ctypes caches POINTER(T) for the lifetime of T. Defining T per lease
+    # retains an unbounded set of layouts even after handles are released.
+    import ctypes
+    from ctypes import wintypes
+    class OVERLAPPED(ctypes.Structure):
+        _fields_ = [('Internal', ctypes.c_size_t), ('InternalHigh', ctypes.c_size_t),
+                    ('Offset', wintypes.DWORD), ('OffsetHigh', wintypes.DWORD),
+                    ('hEvent', wintypes.HANDLE)]
+    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+    lock = kernel.LockFileEx
+    lock.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.DWORD,
+                     wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(OVERLAPPED)]
+    lock.restype = wintypes.BOOL
+    unlock = kernel.UnlockFileEx
+    unlock.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.DWORD,
+                       wintypes.DWORD, ctypes.POINTER(OVERLAPPED)]
+    unlock.restype = wintypes.BOOL
+    return ctypes, OVERLAPPED, lock, unlock
+
+
 def _os_lock(stream, exclusive):
         if os.name == 'nt':
-            import ctypes
             import msvcrt
-            from ctypes import wintypes
-            class OVERLAPPED(ctypes.Structure):
-                _fields_ = [('Internal', ctypes.c_size_t), ('InternalHigh', ctypes.c_size_t),
-                            ('Offset', wintypes.DWORD), ('OffsetHigh', wintypes.DWORD),
-                            ('hEvent', wintypes.HANDLE)]
-            kernel = ctypes.WinDLL('kernel32', use_last_error=True)
-            lock = kernel.LockFileEx
-            lock.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.DWORD,
-                             wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(OVERLAPPED)]
-            lock.restype = wintypes.BOOL
-            unlock = kernel.UnlockFileEx
-            unlock.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.DWORD,
-                               wintypes.DWORD, ctypes.POINTER(OVERLAPPED)]
-            unlock.restype = wintypes.BOOL
+            ctypes, OVERLAPPED, lock, unlock = _windows_lock_api()
             handle = msvcrt.get_osfhandle(stream.fileno()); overlap = OVERLAPPED()
             if not lock(handle, 1 | (2 if exclusive else 0), 0, 1, 0, ctypes.byref(overlap)):
                 raise MaintenanceBusy('库正在使用或维护中；请关闭所有客户端并等待活动任务结束。')
