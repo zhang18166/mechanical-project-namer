@@ -1,18 +1,21 @@
 # 机械项目命名助手 V1.7.1
 
-当前新增 **Phase 3A：离线版本快照与恢复**，已验证范围、状态机、Schema 13迁移及限制见 [PHASE3A](docs/workbench/PHASE3A.md)。调整开发顺序，先独立完成文件级归档；**Phase 2D仍为PARTIAL**，内存趋势、并发诊断超时和STEP补丁问题保持未关闭，见 [PHASE2D](docs/workbench/PHASE2D.md)。在本阶段独立工作树执行：
+当前新增 **Phase 3B：离线归档库配套备份与整体恢复**，范围、格式、维护模式及验收见 [PHASE3B](docs/workbench/PHASE3B.md)。继承 [Phase 3A](docs/workbench/PHASE3A.md)；**Phase 2D仍为PARTIAL**，内存趋势、并发诊断超时和STEP补丁问题保持未关闭，见 [PHASE2D](docs/workbench/PHASE2D.md)。在本阶段独立工作树执行：
 
 ```powershell
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e ".[test]"
-.\scripts\dev_snapshots.ps1
-.\scripts\dev_snapshots.ps1 -Smoke
+.\scripts\dev_backups.ps1
+.\scripts\dev_backups.ps1 -Smoke
+.\scripts\restore_library.ps1
 .\scripts\test_workbench.ps1
 ```
 
-使用“项目文件 → 创建本地版本 / 版本历史”，默认配置在 `%LOCALAPPDATA%\MechanicalWorkbenchDev\phase3a`，支持 `-DevRoot <仓库外新目录>`。选择项目根和文件，创建版本、校验并恢复到新目录；归档入口仅开放隔离开发模式。归档不要求WebEngine、QtPdf、Node或CAD解析器，预览仍按需加载。原“本地预览”、打开/定位保留；安装可选预览依赖的方法见各阶段文档。STEP继续仅限隔离开发模式，原生CAD不解析、不转换。不要使用下面普通运行示例升级正式数据库，本阶段只验收隔离开发数据。
+使用“备份与恢复”打开独立维护窗口；创建前从托盘退出所有源客户端，不能仅隐藏窗口。默认配置在 `%LOCALAPPDATA%\MechanicalWorkbenchDev\phase3b`，支持 `-DevRoot <仓库外新目录>`。数据库损坏时直接运行 `scripts/restore_library.ps1`，无需启动主客户端或初始化旧库。备份是**本地未加密私有目录集**，包含配套SQLite及全部完整归档版本，排除未归档工作文件、凭据、缓存/日志。恢复仅创建新位置；不会覆盖原库或自动切换正式实例。具体路径重绑定与旧工作文件“待重新关联”见阶段文档。
 
-本分支继承公开 V1.7.1 源码及Phase 0–2D，应用版本仍为1.7.1，数据库Schema由12增量升级为13（只在隔离库和虚构旧库副本验证）。阶段事实见 [PROGRESS](docs/workbench/PROGRESS.md)，需求、基线与计划见 [docs/workbench](docs/workbench/BASELINE.md)。历史 MSI 预览仍为1.6.1；本次不构建安装包、不迁移生产数据。旧打包脚本含1.6.1固定元数据，未验收其用于当前版本。
+“项目文件 → 创建本地版本 / 版本历史”和原预览继续保留。归档、备份和整体恢复均仅验收隔离开发范围，不要求WebEngine、QtPdf、Node或CAD解析器；预览仍按需加载。STEP不开放普通模式。不要用普通启动示例升级正式数据库。
+
+本分支继承公开 V1.7.1 源码及Phase 0–3A，应用仍为1.7.1、Schema13；Phase3B没有新增数据库迁移。阶段事实见 [PROGRESS](docs/workbench/PROGRESS.md)，需求、基线与计划见 [docs/workbench](docs/workbench/BASELINE.md)。历史 MSI 预览仍为1.6.1；本次不构建安装包、不迁移生产数据。旧打包脚本含1.6.1固定元数据，未验收其用于当前版本。
 
 Windows 桌面工具，管理机械项目代号、模块和零件编号，支持名称复制、历史记录、SQLite 本地存储、CSV / Excel / PDF 导出、可选 AI 命名和 SOLIDWORKS 联动。
 

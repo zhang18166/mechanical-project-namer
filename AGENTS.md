@@ -9,3 +9,4 @@
 
 - 阶段完成后更新 [PROGRESS](docs/workbench/PROGRESS.md)；只从公开历史派生安全分支，禁止推送本机私有历史。详见 CONTRIBUTING.md。
 - 离线版本入口：`scripts/dev_snapshots.ps1`，详见 [PHASE3A](docs/workbench/PHASE3A.md)。归档/恢复必须后台执行、只写隔离目录；字节完整性、装配依赖和预览对应分别记录。不得覆盖源工程、已完成版本或已有恢复目录。
+- 整库备份入口：`scripts/dev_backups.ps1`；无数据库维护入口：`scripts/restore_library.ps1`。使用维护锁、SQLite在线备份及目录清单交叉验证；恢复只写新隔离实例，不改写源业务记录或备份，详见 [PHASE3B](docs/workbench/PHASE3B.md)。备份集未加密且属于私有数据，不能纳入Git。
