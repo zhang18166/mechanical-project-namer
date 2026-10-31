@@ -1,3 +1,17 @@
+## Phase4D-0 腾讯云现状只读盘点与隔离准备（2026-10-31）
+
+**只读盘点BLOCKED；本地清单/条件性方案已完成；GitHub文档归档待执行。** 公开基准`308c4486ff41f1d2a0d25296c7aabfa98c86cf7f`；分支`codex/mechanical-workbench-cloud-inventory`，工作树`<开发根>/_worktrees/mechanical-workbench-cloud-inventory`。旧4C.1工作树干净并保留，应用1.7.1、桌面Schema13、服务schema3及全部既有代码/依赖不变。
+
+- 已读取现有基线/计划/部署说明，项目未指定唯一腾讯云目标；限定检查未找到本机标准SSH配置及用户known_hosts，agent未运行，也无可用腾讯云专用已授权只读工具。已一次性请求唯一目标、已核验主机身份记录及既有认证机制，不索要聊天密码或私钥；缺项未补齐前远端SSH、API、TLS探测均0次，不拿WSL替代实例。
+- [CLOUD_INVENTORY](CLOUD_INVENTORY.md)逐项列明系统/资源/服务端口/证书续期/云防火墙与历史监控/备份全部未核验；无容量、套餐带宽、公网开放或可恢复性结论。已形成10项条件性隔离、回环私有访问、现网保护、配套备份及局部回滚建议，均未执行。
+- 三项状态分开：盘点BLOCKED、下一轮私有测试执行证据条件BLOCKED、公网部署BLOCKED。4C.1绝对前端期限和TLS根因未关闭；Phase2D仍PARTIAL，STEP普通模式关闭。
+- 本轮仅四份脱敏文档；本机原始元数据/报告和三份既有文档的SHA校验副本保存在仓库外受限目录，无应用代码、依赖、Schema、远端业务或配置写入。不运行安装/服务管理/加固/备份恢复，不建立新监听或隧道。
+- 本轮未运行应用回归、新增应用测试0；1127 Windows/128 Linux（119重叠）只保留为基准历史。已检查四份文档的允许范围、差异、32个链接、敏感信息及三份原文档备份SHA，全部通过；本机证据目录ACL独立核对通过，非加密。新增历史和最终远端SHA在归档时记录，不把未运行的检查记通过。
+
+| 日期 | 提交 / 状态 | 事实 |
+| --- | --- | --- |
+| 2026-10-31 | 基准`308c448` / 盘点BLOCKED | 核对独立公开文档分支；缺唯一目标和可信SSH身份，未发起远端访问；完成本地清单与有条件方案，尚未部署。 |
+
 ## Phase4C.1 慢连接、分层就绪与TLS重连收尾（2026-10-30至31日）
 
 **开发验收PARTIAL、限定验证与最终资源轮完成；GitHub同步PASS。** 公开基准`f36ebf8a75ab102a7f444eaa5d09eada892ea232`，独立分支`codex/mechanical-workbench-phase4c-hardening`、工作树`<开发根>/_worktrees/mechanical-workbench-phase4c-hardening`。应用1.7.1、桌面Schema13、服务schema3及原4C PARTIAL历史不变；实现与验收提交`8cc512cbd392eab336c724c0d6f626c7f9339b5f`已推送并实际读回一致；Phase2D继续PARTIAL、STEP普通模式关闭。
