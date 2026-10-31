@@ -38,7 +38,7 @@
 
 ## 补齐访问后仍须遵守的采集边界
 
-先核对目标和主机身份，再审查明确指定的配置及必要Include；不运行未知Match/ProxyCommand/LocalCommand，不用`ssh -G`绕过配置审查。仅使用现成非root身份与认证，主机密钥验证保持开启；未知或变化指纹停止，不写known_hosts/authorized_keys，不使用sudo/su。
+先核对目标和主机身份，再审查明确指定的配置及必要Include；不运行未知Match/ProxyCommand/LocalCommand，不用`ssh -G`绕过配置审查。优先使用既有获授权非root身份；若用户明确指定的现成身份为root，仍只执行同一只读白名单，不自行提权或改用其他账号。主机密钥验证保持开启；未知或变化指纹停止，不写known_hosts/authorized_keys，不使用sudo/su。
 
 按当前安装版本核验`StrictHostKeyChecking=yes`、禁用主机密钥自动更新和IP条目自动学习的选项，避免读取过程修改known_hosts；批处理不得交互试密码。选项参考[OpenSSH配置手册](https://man.openbsd.org/ssh_config)，这只是后续连接审查要求，本轮未执行SSH。
 
